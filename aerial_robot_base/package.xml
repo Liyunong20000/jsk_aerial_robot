@@ -27,5 +27,6 @@
   <run_depend>rostest</run_depend>
   <run_depend>ublox_gps</run_depend>
   <run_depend>ntrip_ros</run_depend>
+  <run_depend>apriltag_ros</run_depend>
 
 </package>

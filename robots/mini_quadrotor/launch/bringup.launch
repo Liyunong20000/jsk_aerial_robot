@@ -91,11 +91,19 @@
     <arg name="spawn_yaw" value="$(arg spawn_yaw)" />
   </include>
 
+
   ########## Simulation in Mujoco #########
   <include file="$(find aerial_robot_simulation)/launch/mujoco.launch" if="$(eval arg('simulation') and not arg('real_machine') and arg('mujoco'))" >
     <arg name="robot_ns" value="$(arg robot_ns)" />
     <arg name="headless" value="$(arg headless)"/>
     <arg name="mujoco_model" value="$(find mini_quadrotor)/mujoco/robot.xml"/>
   </include>
+
+  ######## Apriltag Detection ############
+  <include file="$(find apriltag_ros)/launch/continuous_detection.launch">
+    <arg name="camera_name" value="/quadrotor/downword_camera" />
+    <arg name="image_topic" value="image_raw" />
+  </include>
+  <rosparam command="load" file="$(find mini_quadrotor)/config/apriltag/tags.yaml" ns="/apriltag_ros_continuous_node"/>
 
 </launch>
