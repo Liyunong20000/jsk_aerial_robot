@@ -3,17 +3,17 @@
 import rospy, sys
 import time
 import threading
-#import subprocess
 from std_msgs.msg import Empty
 from aerial_robot_msgs.msg import FlightNav
 from apriltag_ros.msg import AprilTagDetectionArray
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
-
-
-# This is a sample Python script.
+# import rclpy
+# from rclpy.node import Node
+# from std_msgs.msg import String
 
 # It is for  the first drone BoomBoom
+# Set the global vibration
 x = 0.0
 y = 0.0
 z = 0.0
