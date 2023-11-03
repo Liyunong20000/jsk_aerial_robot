@@ -89,7 +89,11 @@ class AprillandNode:
 
         self.pub_nav.publish(flight_nav_msg)
         rate.sleep()
-
+        while not rospy.is_shutdown():
+            if -0.03 < self.Px- self.x < 0.03:
+                if -0.03< self.Py - self. y < 0.03:
+                    print(f'I have arrived!')
+                    break
     def land_camera(self):
         print(f'Type the goal point')
         self.get_user_input()
@@ -142,6 +146,7 @@ class AprillandNode:
                                 self.pub_nav.publish(flight_nav_msg)
                                 time.sleep(0.5)
                                 if -0.015 < math.sqrt(self.Rx **2 + self.Ry **2) < 0.015:
+                                    print(f'Safe landing!')
                                     self.land()
                                     time.sleep(1)
                                     sys.exit()
