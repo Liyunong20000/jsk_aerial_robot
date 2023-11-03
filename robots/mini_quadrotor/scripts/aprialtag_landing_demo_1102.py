@@ -8,15 +8,14 @@ from aerial_robot_msgs.msg import FlightNav
 from apriltag_ros.msg import AprilTagDetectionArray
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
-# from std_msgs.msg import String
+
 
 # It is for  the first drone BoomBoom
+# use the class to create a node
 
-# Set the global vibration
-# Now create a class for a subscriber
-# Get the distance information between the drone and the Apriltag from the topic /tag_detections
 class AprillandNode:
-    def __init__(self):
+
+    def __init__(self): # This part will work when this node is used.
         print(f'Hi, I am BoomBoom. Today is a day._WJY')
         rospy.init_node('Aprilland', anonymous=True)
 
@@ -24,23 +23,24 @@ class AprillandNode:
         self.Rx, self.Ry, self.Rz = 0.0, 0.0, 0.0
         self.Px, self.Py, self.Pz = 0.0, 0.0, 0.0
 
+        # Subscribe and publish.
         rospy.Subscriber('/tag_detections', AprilTagDetectionArray, self.apriltag_callback)
         rospy.Subscriber('/quadrotor/uav/cog/odom', Odometry, self.position_callback)
         self.pub_nav = rospy.Publisher('/quadrotor/uav/nav', FlightNav, queue_size=10)
         self.pub_land = rospy.Publisher('/quadrotor/teleop_command/land', Empty, queue_size=10)
 
-    def get_user_input(self):
+    def get_user_input(self): # Use to input the number
         self.x = float(input("Enter x value: "))
         self.y = float(input("Enter y value: "))
         self.z = float(input("Enter z value: "))
 
-    def land(self):
+    def land(self): # Use to land
         time.sleep(0.5)
         rospy.loginfo("Publishing land command...")
         empty_msg = Empty()
         self.pub_land.publish(empty_msg)
 
-    def apriltag_callback(self, data):
+    def apriltag_callback(self, data): # Get the information of the distance between the drone and the apriltag
         for detection in data.detections:
             # tag_id = detection.id
             # position = detection.pose.pose.pose.position
@@ -53,12 +53,12 @@ class AprillandNode:
             # print(f"Orientation (x, y, z, w): ({orientation.x}, {orientation.y}, {orientation.z}, {orientation.w})")
             # print("------")
 
-    def position_callback(self, odom_msg):
+    def position_callback(self, odom_msg): # Get the position information of the drone
         self.Px = odom_msg.pose.pose.position.x
         self.Py = odom_msg.pose.pose.position.y
         self.Pz = odom_msg.pose.pose.position.z
 
-    def publish_flight_nav(self):
+    def publish_flight_nav(self): # Set a beginning point
         print(f'Type the begin point')
         # Type the number
         self.get_user_input()
