@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import rospy, sys
 import time
-import threading
+import math
 from std_msgs.msg import Empty
 from aerial_robot_msgs.msg import FlightNav
 from apriltag_ros.msg import AprilTagDetectionArray
@@ -62,11 +62,9 @@ class AprillandNode:
         print(f'Type the begin point')
         # Type the number
         self.get_user_input()
-        # Creat a publishier
 
         rate = rospy.Rate(1)
         time.sleep(0.5)
-
         flight_nav_msg = FlightNav()
         flight_nav_msg.header.seq = 1
         flight_nav_msg.header.stamp.secs = 0
@@ -109,52 +107,46 @@ class AprillandNode:
         self.pub_nav.publish(flight_nav_msg)
         rate.sleep()
         while not rospy.is_shutdown():
-            if self.Rx != 0:
-                if self.Px < 0:
-                    self.Rx = - self.Rx
-                print(f'------------------------------------')
+            if (self.Rx + self.Ry) != 0:
                 flight_nav_msg = FlightNav()
                 flight_nav_msg.header.seq = 1
                 flight_nav_msg.pos_xy_nav_mode = 2
-                print(f'{self.Px} {self.Rx}')
                 flight_nav_msg.target_pos_x = self.Px - self.Rx
                 flight_nav_msg.target_pos_y = self.Py - self.Ry
                 flight_nav_msg.pos_z_nav_mode = 2
                 flight_nav_msg.target_pos_z = 0.5
 
                 self.pub_nav.publish(flight_nav_msg)
-                # print(f"Px: {Px_now} {Px}")
-                if 0.05 > self.Rx > -0.05:
+                if -0.05 < math.sqrt(self.Rx **2 + self.Ry **2) < 0.05:
                     rate = rospy.Rate(0.5)
                     while not rospy.is_shutdown():
-                        print(f'^^^^^^^^^^^^^^^')
-                        time.sleep(0.5)
+                        time.sleep(1)
                         flight_nav_msg = FlightNav()
                         flight_nav_msg.header.seq = 1
                         flight_nav_msg.pos_xy_nav_mode = 2
-                        #print(f'Type the goal point')
                         flight_nav_msg.target_pos_x = self.Px - self.Rx
                         flight_nav_msg.target_pos_y = self.Py - self.Ry
                         flight_nav_msg.pos_z_nav_mode = 2
+                        flight_nav_msg.target_pos_z = 0.3
                         self.pub_nav.publish(flight_nav_msg)
-                        # print(f"Px: {Px_now} {Px}")
                         time.sleep(0.5)
-                        if (-0.01 < self.Rx < 0.01):
-                            print("~~~~~~~~~~")
-                            flight_nav_msg = FlightNav()
-                            flight_nav_msg.header.seq = 1
-                            flight_nav_msg.pos_xy_nav_mode = 2
-                            flight_nav_msg.target_pos_x = self.Px - self.Rx
-                            flight_nav_msg.target_pos_y = self.Py - self.Ry
-                            flight_nav_msg.pos_z_nav_mode = 2
-                            self.pub_nav.publish(flight_nav_msg)
-                            time.sleep(0.5)
-                            if -0.01 < self.Ry < 0.01:
-                                self.land()
-                                time.sleep(1)
-                                sys.exit()
+                        if (-0.02 < math.sqrt(self.Rx **2 + self.Ry **2) < 0.02):
+                            while not rospy.is_shutdown():
+                                flight_nav_msg = FlightNav()
+                                flight_nav_msg.header.seq = 1
+                                flight_nav_msg.pos_xy_nav_mode = 2
+                                flight_nav_msg.target_pos_x = self.Px - self.Rx
+                                flight_nav_msg.target_pos_y = self.Py - self.Ry
+                                flight_nav_msg.pos_z_nav_mode = 2
+                                flight_nav_msg.target_pos_z = 0.1
+                                self.pub_nav.publish(flight_nav_msg)
+                                time.sleep(0.5)
+                                if -0.015 < math.sqrt(self.Rx **2 + self.Ry **2) < 0.015:
+                                    self.land()
+                                    time.sleep(1)
+                                    sys.exit()
 
-# Press the green button in the gutter to run the script.
+
 if __name__ == '__main__':
     node = AprillandNode()
     time.sleep(0.5)
@@ -162,4 +154,3 @@ if __name__ == '__main__':
     node.land_camera()
     while not rospy.is_shutdown():
         rospy.spin()
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
