@@ -3,12 +3,13 @@
 import rospy, sys
 import time
 import math
+import tf2_ros
+import tf
 from std_msgs.msg import Empty
 from aerial_robot_msgs.msg import FlightNav
 from apriltag_ros.msg import AprilTagDetectionArray
-from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
-
+from geometry_msgs.msg import TransformStamped
 
 # It is for  the first drone BoomBoom
 # use the class to create a node
@@ -29,29 +30,38 @@ class AprillandNode:
         self.pub_nav = rospy.Publisher('/quadrotor/uav/nav', FlightNav, queue_size=10)
         self.pub_land = rospy.Publisher('/quadrotor/teleop_command/land', Empty, queue_size=10)
 
-    def get_user_input(self): # Use to input the number
+        self.tf_buffer = tf2_ros.Buffer()
+        # Initialize a TransformListener
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
+        #transformation
+
+    def get_user_input(self):  # Use to input the number
         self.x = float(input("Enter x value: "))
         self.y = float(input("Enter y value: "))
         self.z = float(input("Enter z value: "))
 
-    def land(self): # Use to land
+
+    def land(self):  # Use to land
         time.sleep(0.5)
         rospy.loginfo("Publishing land command...")
         empty_msg = Empty()
         self.pub_land.publish(empty_msg)
 
-    def apriltag_callback(self, data): # Get the information of the distance between the drone and the apriltag
-        for detection in data.detections:
-            # tag_id = detection.id
-            # position = detection.pose.pose.pose.position
-            self.Rx = detection.pose.pose.pose.position.y
-            self.Ry = detection.pose.pose.pose.position.x
-            self.Rz = detection.pose.pose.pose.position.z
-            orientation = detection.pose.pose.pose.orientation
-            # print(f"AprilTag ID: {tag_id}")
-            # print(f"Position (x, y, z)")
-            # print(f"Orientation (x, y, z, w): ({orientation.x}, {orientation.y}, {orientation.z}, {orientation.w})")
-            # print("------")
+    def apriltag_callback(self,data):
+        # Get the information of the distance between the drone and the apriltag
+        while not rospy.is_shutdown():
+            try:
+                transform = self.tf_buffer.lookup_transform('world', 'Target', rospy.Time(0), rospy.Duration(0.1))
+                self.Rx = transform.transform.translation.x
+                self.Ry = transform.transform.translation.y
+                self.Rz = transform.transform.translation.z
+            except :
+                continue
+
+
+        #print(f'{self.Rx}  {self.Ry}  {self.Rz}')
+
 
     def position_callback(self, odom_msg): # Get the position information of the drone
         self.Px = odom_msg.pose.pose.position.x
@@ -115,8 +125,8 @@ class AprillandNode:
                 flight_nav_msg = FlightNav()
                 flight_nav_msg.header.seq = 1
                 flight_nav_msg.pos_xy_nav_mode = 2
-                flight_nav_msg.target_pos_x = self.Px - self.Rx
-                flight_nav_msg.target_pos_y = self.Py - self.Ry
+                flight_nav_msg.target_pos_x = self.Rx
+                flight_nav_msg.target_pos_y = self.Ry
                 flight_nav_msg.pos_z_nav_mode = 2
                 flight_nav_msg.target_pos_z = 0.5
 
@@ -128,8 +138,8 @@ class AprillandNode:
                         flight_nav_msg = FlightNav()
                         flight_nav_msg.header.seq = 1
                         flight_nav_msg.pos_xy_nav_mode = 2
-                        flight_nav_msg.target_pos_x = self.Px - self.Rx
-                        flight_nav_msg.target_pos_y = self.Py - self.Ry
+                        flight_nav_msg.target_pos_x = self.Rx
+                        flight_nav_msg.target_pos_y = self.Ry
                         flight_nav_msg.pos_z_nav_mode = 2
                         flight_nav_msg.target_pos_z = 0.3
                         self.pub_nav.publish(flight_nav_msg)
@@ -139,14 +149,16 @@ class AprillandNode:
                                 flight_nav_msg = FlightNav()
                                 flight_nav_msg.header.seq = 1
                                 flight_nav_msg.pos_xy_nav_mode = 2
-                                flight_nav_msg.target_pos_x = self.Px - self.Rx
-                                flight_nav_msg.target_pos_y = self.Py - self.Ry
+                                flight_nav_msg.target_pos_x = self.Rx
+                                flight_nav_msg.target_pos_y = self.Ry
                                 flight_nav_msg.pos_z_nav_mode = 2
                                 flight_nav_msg.target_pos_z = 0.1
                                 self.pub_nav.publish(flight_nav_msg)
                                 time.sleep(0.5)
-                                if -0.015 < math.sqrt(self.Rx **2 + self.Ry **2) < 0.015:
+                                if -0.01 < math.sqrt(self.Rx **2 + self.Ry **2) < 0.01:
                                     print(f'Safe landing!')
+                                    print(f'X = {self.Px}, Y = {self.Py}')
+                                    time.sleep(0.2)
                                     self.land()
                                     time.sleep(1)
                                     sys.exit()
