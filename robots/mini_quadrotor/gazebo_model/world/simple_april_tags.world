@@ -34,10 +34,38 @@
       <uri>model://ground_plane</uri>
     </include>
 
-    <model name="april_tag1" >
+    <model name="april_tag0" >
       <pose>0.0 0.0 0.0 0 0 0</pose>
       <include>
         <uri>model://Apriltag36_11_00000_small//</uri>
+      </include>
+    </model>
+
+    <model name="april_tag1" >
+      <pose>-0.030 0.062 0.0 0 0 0</pose>
+      <include>
+        <uri>model://Apriltag36_11_00001_small//</uri>
+      </include>
+    </model>
+
+    <model name="april_tag2" >
+      <pose>0.029 0.0625 0.0 0 0 0</pose>
+      <include>
+        <uri>model://Apriltag36_11_00002_small//</uri>
+      </include>
+    </model>
+
+    <model name="april_tag3" >
+      <pose>-0.030 -0.0623 0.0 0 0 0</pose>
+      <include>
+        <uri>model://Apriltag36_11_00003_small//</uri>
+      </include>
+    </model>
+
+    <model name="april_tag4" >
+      <pose>0.029 -0.0625 0.0 0 0 0</pose>
+      <include>
+        <uri>model://Apriltag36_11_00004_small//</uri>
       </include>
     </model>
 

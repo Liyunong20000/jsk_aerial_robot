@@ -21,9 +21,11 @@
 #   ]
 standalone_tags:
   [
-  {id: 0, size: 0.151, name: Target},
-  {id: 1, size: 1.0, name: EZ1},
-  {id: 2, size: 1.0, name: EZ2},
+  {id: 0, size: 0.0475, name: Target_master},
+  {id: 1, size: 0.0475, name: Target_1},
+  {id: 2, size: 0.0475, name: Target_2},
+  {id: 3, size: 0.0475, name: Target_3},
+  {id: 4, size: 0.0475, name: Target_4},
   
   ]
 # ## Tag bundle definitions
@@ -50,12 +52,14 @@ standalone_tags:
 tag_bundles:
   [
   {
-       name: 'CUSTOM_BUNDLE_NAME',
+       name: 'CUSTOM_BUNDLE_0',
        layout:
          [
-          {id: 0, size: 0.151, x: 0.0, y: 0.0, z: 0.0, qw: 0.0, qx: 0.0, qy: 0.0, qz: 0.0},
-          #{id: 1, size: 1.0, x: 2.0, y: 0.0, z: 0.0, qw: 0.0, qx: 0.0, qy: 0.0, qz: 0.0},
-         # {id: 2, size: 1.0, x: 0.0, y: 2.0, z: 0.0, qw: 0.0, qx: 0.0, qy: 0.0, qz: 0.0},
+          {id: 0, size: 0.0475, x: 0.0, y: 0.0, z: 0.0, qw: 1.0, qx: 0.0, qy: 0.0, qz: 0.0},
+          {id: 1, size: 0.0475, x: -0.030, y: 0.062, z: 0.0, qw: 1.0, qx: 0.0, qy: 0.0, qz: 0.0},
+          {id: 2, size: 0.0475, x: 0.029, y: 0.0625, z: 0.0, qw: 1.0, qx: 0.0, qy: 0.0, qz: 0.0},
+          {id: 3, size: 0.0475, x: -0.030, y: -0.0623, z: 0.0, qw: 1.0, qx: 0.0, qy: 0.0, qz: 0.0},
+          {id: 4, size: 0.0475, x: 0.029, y: -0.0625, z: 0.0, qw: 1.0, qx: 0.0, qy: 0.0, qz: 0.0},
          ]
      },
   ]
