@@ -1,6 +1,6 @@
 <?xml version='1.0'?>
 <sdf version='1.6'>
-  <model name='Apriltag36_11_00000_small'>
+  <model name='Apriltag36_11_00003_small'>
     <link name='main'>
     <pose frame=''>0 0 0 0 0 0</pose>
       <visual name='main_Visual'>
@@ -11,9 +11,9 @@
         </geometry>
            <material>
           <script>
-            <uri>model://Apriltag36_11_00000/materials/scripts</uri>
-            <uri>model://Apriltag36_11_00000/materials/textures</uri>
-            <name>Apriltag36_11_00000</name>
+            <uri>model://Apriltag36_11_00003/materials/scripts</uri>
+            <uri>model://Apriltag36_11_00003/materials/textures</uri>
+            <name>Apriltag36_11_00003</name>
           </script>
         </material>
       </visual>

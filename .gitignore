@@ -111,3 +111,6 @@ tags
 # mujoco
 MUJOCO_LOG.txt
 robots/**/mujoco
+
+/aerial_robot_control/cmake-build-debug/
+
