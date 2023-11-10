@@ -69,5 +69,12 @@
       </include>
     </model>
 
+    <model name="april_tag5" >
+      <pose>0.07 0.0 0.0 0 0 0</pose>
+      <include>
+        <uri>model://Apriltag36_11_00005_small//</uri>
+      </include>
+    </model>
+
   </world>
 </sdf>
