@@ -13,7 +13,7 @@
           <script>
             <uri>model://Apriltag36_11_00005/materials/scripts</uri>
             <uri>model://Apriltag36_11_00005/materials/textures</uri>
-            <name>Apriltag36_11_00004</name>
+            <name>Apriltag36_11_00005</name>
           </script>
         </material>
       </visual>
