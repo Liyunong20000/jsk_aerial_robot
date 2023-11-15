@@ -99,12 +99,15 @@ class AprillandNode:
         # Type the number
         #self.get_user_input()
         self.nav_info(1, 0, 0.7)
-        time.sleep(3)
         while not rospy.is_shutdown():
-            if -0.03 < self.Px - 1 < 0.03:
-                if -0.03 < self.Py - 0 < 0.03:
+            if -0.05 < self.Px - 1 < 0.05:
+                if -0.05 < self.Py - 0 < 0.05:
                     print(f'I have arrived!')
                     break
+        self.nav_info(0.6, 0, 0.7)
+        self.nav_info(0.3, 0, 0.7)
+        time.sleep(3)
+
 
     def land_camera(self):
         #print(f'Type the goal point')
@@ -124,12 +127,13 @@ class AprillandNode:
                             while not rospy.is_shutdown():
                                 self.nav_info(self.Rx, self.Ry, 0.10)
                                 time.sleep(1)
-                                if -0.01 < math.sqrt(self.Rx ** 2 + self.Ry ** 2 < 0.01):
-                                    print(f'Safe landing!')
-                                    print(f'X = {self.Px}, Y = {self.Py}')
-                                    self.land()
-                                    time.sleep(1)
-                                    sys.exit()
+                                print(f'Safe landing!')
+                                print(f'X = {self.Px}, Y = {self.Py}')
+                                self.land()
+                                time.sleep(1)
+                                sys.exit()
+                                #if -0.01 < math.sqrt(self.Rx ** 2 + self.Ry ** 2 < 0.01):
+
 
 
 if __name__ == '__main__':
