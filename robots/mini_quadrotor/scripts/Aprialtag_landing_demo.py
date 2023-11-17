@@ -54,7 +54,7 @@ class AprillandNode:
         # Get the information of the distance between the drone and the apriltag
         while not rospy.is_shutdown():
             try:
-                transform = self.tf_buffer.lookup_transform('world', 'CUSTOM_BUNDLE_0', rospy.Time.now(), rospy.Duration(0.1))
+                transform = self.tf_buffer.lookup_transform('world', 'Target', rospy.Time.now(), rospy.Duration(0.1))
                 self.Rx = transform.transform.translation.x
                 self.Ry = transform.transform.translation.y
                 self.Rz = transform.transform.translation.z
