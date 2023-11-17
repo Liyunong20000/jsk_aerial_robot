@@ -112,7 +112,7 @@ class AprillandNode:
     def land_camera(self):
         #print(f'Type the goal point')
         #self.get_user_input()
-        self.nav_info(-0.3, 0, 0.7)
+        self.nav_info(0, 0, 1.0)
 
         while not rospy.is_shutdown():
             if (self.Rx + self.Ry) != 0:
@@ -129,7 +129,7 @@ class AprillandNode:
 if __name__ == '__main__':
     node = AprillandNode()
     time.sleep(0.5)
-    node.publish_flight_nav()
+    #node.publish_flight_nav()
     node.land_camera()
     while not rospy.is_shutdown():
         rospy.spin()
