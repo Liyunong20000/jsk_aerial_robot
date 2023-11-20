@@ -116,8 +116,8 @@ class AprillandNode:
 
         while not rospy.is_shutdown():
             if (self.Rx + self.Ry) != 0:
-                self.nav_info(self.P * self.Rx, self.P* self.Ry, 0.5)
-                if -0.05 < math.sqrt(self.Rx ** 2 + self.Ry ** 2) < 0.05:
+                self.nav_info(self.Rx, self.Ry, 0.5)
+                if -0.05 < math.sqrt((self.Rx-self.Px) ** 2 + (self.Ry-self.Py) ** 2) < 0.05:
                     time.sleep(1)
                     print(f'Safe landing!')
                     print(f'X = {self.Px}, Y = {self.Py}')
