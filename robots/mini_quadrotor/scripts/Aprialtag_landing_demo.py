@@ -98,40 +98,41 @@ class AprillandNode:
         #print(f'Type the begin point')
         # Type the number
         #self.get_user_input()
-        self.nav_info(1, 0, 0.7)
-        time.sleep(3)
+        #self.nav_info(1, 0, 1.0)
+        #time.sleep(3)
         #while not rospy.is_shutdown():
             #if -0.05 < self.Px < 0.05:
                 #if -0.05 < self.Py - 0 < 0.05:
                     #print(f'I have arrived!')
                     #break
-        self.nav_info(0.6, 0, 0.7)
+        self.nav_info(0.6, 0, 1.0)
         time.sleep(3)
-        self.nav_info(0.3, 0, 0.7)
-        time.sleep(3)
+        #self.nav_info(0.3, 0, 0.7)
+        #time.sleep(3)
 
 
     def land_camera(self):
         #print(f'Type the goal point')
         #self.get_user_input()
-        self.nav_info(-0.3, 0, 0.7)
+        self.nav_info(0.0, 0, 0.8)
 
         while not rospy.is_shutdown():
             if (self.Rx + self.Ry) != 0:
-                self.nav_info(self.Rx, self.Ry, 0.5)
-                if -0.05 < math.sqrt((self.Rx-self.Px) ** 2 + (self.Ry-self.Py) ** 2) < 0.05:
-                    time.sleep(1)
-                    print(f'Safe landing!')
-                    print(f'X = {self.Px}, Y = {self.Py}')
-                    self.land()
-                    time.sleep(1)
-                    sys.exit()
+                self.nav_info(self.Rx, self.Ry, 0.8)
+                print(f'Safe landing!')
+                print(f'X = {self.Px}, Y = {self.Py}')
+                self.land()
+                time.sleep(1)
+                sys.exit()
+                #time.sleep(1)
+                #if -0.03 < math.sqrt((self.Rx-self.Px) ** 2 + (self.Ry-self.Py) ** 2) < 0.03:
+
 
 
 if __name__ == '__main__':
     node = AprillandNode()
     time.sleep(0.5)
-    node.publish_flight_nav()
+    #node.publish_flight_nav()
     node.land_camera()
     while not rospy.is_shutdown():
         rospy.spin()
