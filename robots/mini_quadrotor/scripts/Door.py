@@ -5,7 +5,7 @@ import time
 import math
 import tf2_ros
 import tf
-from std_msgs.msg import Empty
+from std_msgs.msg import Empty, UInt8
 from aerial_robot_msgs.msg import FlightNav
 from apriltag_ros.msg import AprilTagDetectionArray
 from nav_msgs.msg import Odometry
@@ -24,18 +24,23 @@ class DoorlandNode:
         self.x, self.y, self.z = 0.0, 0.0, 0.0
         self.Rx, self.Ry, self.Rz = 0.0, 0.0, 0.0
         self.Px, self.Py, self.Pz = 0.0, 0.0, 0.0
+        self.Tx, self.Ty, self.Tz, self.Trz = 0.0, 0.0, 0.0, 0.0
         self.P = 0.6
         self._seq = 0
+        self.state = 0
 
         # Subscribe and publish.
         #rospy.Subscriber('/tag_detections', AprilTagDetectionArray, self._callback_apriltag)
         rospy.Subscriber('/quadrotor/uav/cog/odom', Odometry, self._callback_position)
-        #self.pub_nav = rospy.Publisher('/quadrotor/uav/nav', FlightNav, queue_size=10)
+        rospy.Subscriber('/quadrotor/flight_state', UInt8, self._callback_state)
+        self.pub_nav = rospy.Publisher('/quadrotor/uav/nav', FlightNav, queue_size=10)
+        self.pub_takeoff = rospy.Publisher('/quadrotor/teleop_command/takeoff', Empty, queue_size=10)
         self.pub_land = rospy.Publisher('/quadrotor/teleop_command/land', Empty, queue_size=10)
 
-        self.tf_buffer = tf2_ros.Buffer()
+
+        #self.tf_buffer = tf2_ros.Buffer()
         # Initialize a TransformListener
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        #self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
 
         # transformation
 
@@ -44,6 +49,11 @@ class DoorlandNode:
         self.y = float(input("Enter y value: "))
         self.z = float(input("Enter z value: "))
 
+    def takeoff(self):  # Use to land
+        time.sleep(0.5)
+        rospy.loginfo("Publishing takeoff command...")
+        empty_msg = Empty()
+        self.pub_takeoff.publish(empty_msg)
     def land(self):  # Use to land
         time.sleep(0.5)
         rospy.loginfo("Publishing land command...")
@@ -69,6 +79,16 @@ class DoorlandNode:
         self.Py = odom_msg.pose.pose.position.y
         self.Pz = odom_msg.pose.pose.position.z
 
+    def _callback_state(self, msg):
+        self.state = msg.data
+
+    def record_takeoff_position(self):
+        self.Tx = self.Px
+        self.Ty = self.Py
+        self.Tz = self.Pz
+        self.Trz = self.Tz + 0.4
+        print(self.Px, self.Py)
+        print(self.Tx, self.Ty)
     def nav_info(self, x, y, z) :
         flight_nav_msg = FlightNav()
         flight_nav_msg.header.seq = self._seq
@@ -94,6 +114,8 @@ class DoorlandNode:
         flight_nav_msg.target_pos_diff_z = 0.0
 
         self.pub_nav.publish(flight_nav_msg)
+
+
     def publish_flight_nav(self):  # Set a beginning point
         #print(f'Type the begin point')
         # Type the number
@@ -114,16 +136,28 @@ class DoorlandNode:
     def land_door(self):
 
         while not rospy.is_shutdown():
-            if -0.03 < math.sqrt((self.Px - 0.0) ** 2 + (self.Py - 0.0) ** 2) < 0.03:
-                print(f'Safe landing!')
-                print(f'X = {self.Px}, Y = {self.Py}')
-                self.land()
-                time.sleep(1)
-                sys.exit()
+            if self.state == 5: # reach hover state
+                break
+            time.sleep(0.1)
+
+        Tz = self.Tz + 0.4
+        self.nav_info(self.Tx, self.Ty, Tz)
+        print(f'Move to lower Z')
+        while not rospy.is_shutdown():
+            if self.Pz - Tz < 0.03:
+                if math.sqrt((self.Px - self.Tx) ** 2 + (self.Py - self.Ty) ** 2) < 0.01:
+                    print(f'Safe landing!')
+                    print(f'X = {self.Px}, Y = {self.Py}')
+                    self.land()
+                    time.sleep(1)
+                    sys.exit()
+
 
 if __name__ == '__main__':
     node = DoorlandNode()
-    time.sleep(0.5)
+    time.sleep(3)
+    node.record_takeoff_position()
+    node.takeoff()
     node.land_door()
     while not rospy.is_shutdown():
         rospy.spin()
