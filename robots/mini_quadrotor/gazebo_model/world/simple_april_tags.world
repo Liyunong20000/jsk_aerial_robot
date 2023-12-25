@@ -41,40 +41,5 @@
       </include>
     </model>
 
-    <model name="april_tag1" >
-      <pose>-0.0265 0.055 0.0 0 0 0</pose>
-      <include>
-        <uri>model://Apriltag36_11_00001_small//</uri>
-      </include>
-    </model>
-
-    <model name="april_tag2" >
-      <pose>0.027 0.0555 0.0 0 0 0</pose>
-      <include>
-        <uri>model://Apriltag36_11_00002_small//</uri>
-      </include>
-    </model>
-
-    <model name="april_tag3" >
-      <pose>-0.027 -0.0555 0.0 0 0 0</pose>
-      <include>
-        <uri>model://Apriltag36_11_00003_small//</uri>
-      </include>
-    </model>
-
-    <model name="april_tag4" >
-      <pose>0.029 -0.0557 0.0 0 0 0</pose>
-      <include>
-        <uri>model://Apriltag36_11_00004_small//</uri>
-      </include>
-    </model>
-
-    <model name="april_tag5" >
-      <pose>0.050 0.0 0.0 0 0 0</pose>
-      <include>
-        <uri>model://Apriltag36_11_00005_small//</uri>
-      </include>
-    </model>
-
   </world>
 </sdf>
