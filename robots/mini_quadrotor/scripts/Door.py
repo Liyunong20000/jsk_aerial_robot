@@ -145,7 +145,7 @@ class DoorlandNode:
         print(f'Move to lower Z')
         while not rospy.is_shutdown():
             if self.Pz - Tz < 0.03:
-                if math.sqrt((self.Px - self.Tx) ** 2 + (self.Py - self.Ty) ** 2) < 0.01:
+                if math.sqrt((self.Px - self.Tx) ** 2 + (self.Py - self.Ty) ** 2) < 0.005:
                     print(f'Safe landing!')
                     print(f'X = {self.Px}, Y = {self.Py}')
                     self.land()
