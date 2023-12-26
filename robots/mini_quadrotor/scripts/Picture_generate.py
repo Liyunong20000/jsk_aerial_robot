@@ -36,4 +36,4 @@ result_image.paste(image0_resized, (694, 1129))
 
 
 # 保存结果
-result_image.save("result_image.jpg")
+result_image.save("Apriltag_0.jpg")
