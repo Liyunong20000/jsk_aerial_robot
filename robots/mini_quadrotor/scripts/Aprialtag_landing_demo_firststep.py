@@ -65,7 +65,10 @@ class AprillandNode:
         self.Rx = transform.transform.translation.x
         self.Ry = transform.transform.translation.y
         self.Rz = transform.transform.translation.z
+        #print(f'Apriltag position')
+        #print( self.Rx, self.Ry )
         # print(f'{self.Rx}  {self.Ry}  {self.Rz}')
+
 
     def _callback_position(self, odom_msg):  # Get the position information of the drone
         self.Px = odom_msg.pose.pose.position.x
@@ -139,6 +142,8 @@ class AprillandNode:
             if self.Pz - tz < 0.03:
                 break
             time.sleep(0.1)
+        print(f'Wait for 3 seconds!')
+        time.sleep(3)
         rx = self.Rx
         ry = self.Ry
         self.nav_info(rx, ry, tz)

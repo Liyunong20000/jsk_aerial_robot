@@ -202,7 +202,7 @@
 
   <!-- downward camera: depth, color based on left camera -->
   <xacro:extra_module name = "downward_camera_frame" parent = "main_body">
-    <origin xyz="0.077 -0.01 -0.012" rpy="0 ${pi/2} 0"/>
+    <origin xyz="0.0925 0.00 -0.017" rpy="0 ${pi/2} 0"/>
     <inertial>
       <mass value = "0.00001" />
       <origin xyz="0 0 0" rpy="0 0 0"/>
