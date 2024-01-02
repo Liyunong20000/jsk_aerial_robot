@@ -25,7 +25,7 @@ class AprillandNode:
         self.Px, self.Py, self.Pz = 0.0, 0.0, 0.0
         self.Rx, self.Ry, self.Rz = 0.0, 0.0, 0.0
         self.Tx, self.Ty, self.Tz= 0.0, 0.0, 0.0
-        self.P = 0.6
+        self.I = 1
         self._seq = 0
         self.state = 0
 
@@ -144,10 +144,17 @@ class AprillandNode:
             time.sleep(0.1)
         print(f'Wait for 3 seconds!')
         time.sleep(3)
-        rx = self.Rx
-        ry = self.Ry
-        self.nav_info(rx, ry, tz)
-        print(rx, ry)
+
+        while not rospy.is_shutdown():
+            rx = self.Rx
+            ry = self.Ry
+            self.nav_info(rx, ry, tz)
+            self.I = 0
+            if self.I == 0 :
+                break
+            time.sleep(0.1)
+
+        print(f'rx ={rx}, ry = {ry}')
         while not rospy.is_shutdown():
             if math.sqrt((self.Px - rx) ** 2 + (self.Py - ry) ** 2) < 0.01:
                 print(f'Safe landing!')
