@@ -204,7 +204,7 @@
   <xacro:extra_module name = "downward_camera_frame" parent = "main_body">
     <origin xyz="0.0925 0.00 -0.017" rpy="0 ${pi/2} 0"/>
     <inertial>
-      <mass value = "0.00001" />
+      <mass value = "0.080" />
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <inertia
           ixx="0.000001" ixy="0.0" ixz="0.0"
