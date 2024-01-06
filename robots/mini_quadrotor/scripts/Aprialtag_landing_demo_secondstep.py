@@ -10,7 +10,7 @@ from aerial_robot_msgs.msg import FlightNav
 from apriltag_ros.msg import AprilTagDetectionArray
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import TransformStamped
-
+import numpy as np
 
 # It is for  the first drone BoomBoom
 # use the class to create a node
@@ -146,24 +146,42 @@ class AprillandNode:
         time.sleep(3)
 
         while not rospy.is_shutdown():
-            rx = self.Rx
-            ry = self.Ry
-            if rx != 0 and ry != 0:
-                self.nav_info(rx, ry, tz)
+            x_values = []
+            y_values = []
+            for i in range (5):
+                x_values.append(self.Rx)
+                y_values.append(self.Ry)
+                time.sleep(1)
+
+            x_data = np.array(x_values)
+            y_data = np.array(y_values)
+            print(f'{x_data}, {y_data}')
+            # 定义移动平均的窗口大小（你可以根据需要调整）
+            window_size = 3
+
+            # 计算 x 和 y 的移动平均值
+            middle_rx = np.convolve(x_data, np.ones(window_size) / window_size, mode='valid')
+            middle_ry = np.convolve(y_data, np.ones(window_size) / window_size, mode='valid')
+            print(f'the apriltags position is rx ={middle_rx}, ry = {middle_ry}')
+            smoothed_rx = np.convolve(middle_rx, np.ones(window_size) / window_size, mode='valid')
+            smoothed_ry = np.convolve(middle_ry, np.ones(window_size) / window_size, mode='valid')
+            print(f'the apriltags position is rx ={smoothed_rx}, ry = {smoothed_ry}')
+            if smoothed_rx !=0 and smoothed_ry != 0:
+                self.nav_info(smoothed_rx, smoothed_ry, tz)
                 while not rospy.is_shutdown():
-                    if (self.Px - rx) < 0.03 and (self.Py - ry) < 0.03:
+                    if (self.Px - smoothed_rx) < 0.03 and (self.Py - smoothed_ry) < 0.03:
                         break
                     time.sleep(0.1)
                 break
             #break
-        print(f'the apriltags position is rx ={rx}, ry = {ry}')
+
         while not rospy.is_shutdown():
-            if math.sqrt((self.Px - rx) ** 2 + (self.Py - ry) ** 2) < 0.01:
+            if math.sqrt((self.Px - smoothed_rx) ** 2 + (self.Py - smoothed_ry) ** 2) < 0.01:
                 print(f'Safe landing!')
-                print(f'Before landing on X = {self.Px}, Y = {self.Py}')
+                print(f'Before landing on, the position is X = {self.Px}, Y = {self.Py}')
                 self.land()
                 time.sleep(1)
-                print(f'After landing on X = {self.Px}, Y = {self.Py}')
+                print(f'After landing on, the position is X = {self.Px}, Y = {self.Py}')
                 sys.exit()
 
 
