@@ -201,8 +201,31 @@
   </xacro:extra_module>
 
   <!-- downward camera: depth, color based on left camera -->
-  <xacro:extra_module name = "downward_camera_frame" parent = "main_body">
-    <origin xyz="0.0925 0.00 -0.017" rpy="0 ${pi/2} 0"/>
+  <!-- <xacro:extra_module name = "downward_camera_frame" parent = "main_body"> -->
+  <!--   <origin xyz="0.0925 0.00 -0.017" rpy="0 ${pi/2} 0"/> -->
+  <!--   <inertial> -->
+  <!--     <mass value = "0.00001" /> -->
+  <!--     <origin xyz="0 0 0" rpy="0 0 0"/> -->
+  <!--     <inertia -->
+  <!--         ixx="0.000001" ixy="0.0" ixz="0.0" -->
+  <!--         iyy="0.000001" iyz="0.0" -->
+  <!--         izz="0.000002"/>-\-> -->
+  <!--   </inertial> -->
+  <!-- </xacro:extra_module> -->
+  <!-- <xacro:extra_module name = "downward_camera_optical_frame" parent = "downward_camera_frame"> -->
+  <!--   <origin xyz="0 0 0" rpy="${-pi / 2} 0 ${-pi / 2}"/> -->
+  <!--   <inertial> -->
+  <!--    <mass value = "0.00001" /> -->
+  <!--    <origin xyz="0 0 0" rpy="0 0 0"/> -->
+  <!--     <inertia -->
+  <!--         ixx="0.000001" ixy="0.0" ixz="0.0" -->
+  <!--         iyy="0.000001" iyz="0.0" -->
+  <!--         izz="0.000002"/> -->
+  <!--   </inertial> -->
+  <!-- </xacro:extra_module> -->
+
+  <xacro:extra_module name = "Apriltag_frame" parent = "main_body">
+    <origin xyz=" 0.173 0.00 -0.008" rpy="0 ${pi} 0"/>
     <inertial>
       <mass value = "0.00001" />
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -210,17 +233,6 @@
           ixx="0.000001" ixy="0.0" ixz="0.0"
           iyy="0.000001" iyz="0.0"
           izz="0.000002"/>-->
-    </inertial>
-  </xacro:extra_module>
-  <xacro:extra_module name = "downward_camera_optical_frame" parent = "downward_camera_frame">
-    <origin xyz="0 0 0" rpy="${-pi / 2} 0 ${-pi / 2}"/>
-    <inertial>
-     <mass value = "0.00001" />
-     <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia
-          ixx="0.000001" ixy="0.0" ixz="0.0"
-          iyy="0.000001" iyz="0.0"
-          izz="0.000002"/>
     </inertial>
   </xacro:extra_module>
 
