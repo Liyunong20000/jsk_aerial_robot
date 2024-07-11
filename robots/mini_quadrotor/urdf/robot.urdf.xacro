@@ -224,16 +224,14 @@
   <!--   </inertial> -->
   <!-- </xacro:extra_module> -->
 
-  <!-- New link for the AprilTag -->
+   <!-- New link for the AprilTag -->
+
   <link name="apriltag_link">
     <visual>
       <origin xyz="0 0 0" rpy="${-pi} 0 0"/>
       <geometry>
-        <box size="0.032 0.032 0.001"/>
+        <mesh filename="package://cooperation_landing/urdf/tag36_11_00000.dae" />
       </geometry>
-      <material name="apriltag_material">
-        <texture filename="package://aerial_robot_simulation/gazebo_model/models/Apriltag36_11_00000/materials/textures/tag36_11_00000.png"/>
-      </material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -242,7 +240,7 @@
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.01"/>
+      <mass value="0.0001"/>
       <origin xyz="0 0 0"/>
       <inertia ixx="0.0001" ixy="0.0" ixz="0.0" iyy="0.0001" iyz="0.0" izz="0.0001"/>
     </inertial>
