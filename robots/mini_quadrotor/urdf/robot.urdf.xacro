@@ -178,7 +178,7 @@
   </xacro:extra_module>
 
   <xacro:extra_module name = "livox_link" parent = "main_body" visible = "0" >
-    <origin xyz="0 0 ${0.0425 + 0.047}" rpy="0 0 0"/>
+    <origin xyz="0 0 ${0.0425 + 0.047 + 0.005}" rpy="0 0 0"/>
     <inertial>
       <mass value = "0" />
       <origin xyz="0 0 0" rpy="0 0 0"/>
