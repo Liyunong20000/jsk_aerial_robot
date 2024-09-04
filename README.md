@@ -19,6 +19,7 @@ cd ~/ros/jsk_aerial_robot_ws/src/jsk_aerial_robot
 wstool merge -t src src/jsk_aerial_robot/aerial_robot_${ROS_DISTRO}.rosinstall
 wstool update -t src
 rosdep install -y -r --from-paths src --ignore-src --rosdistro $ROS_DISTRO
+sudo apt install python3-catkin-tools
 catkin build
 ```
 
