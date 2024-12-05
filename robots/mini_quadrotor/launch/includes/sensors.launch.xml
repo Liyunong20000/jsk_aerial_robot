@@ -23,6 +23,14 @@
           <arg name="rviz" value="false" />
         </include>
 
+        <!-- camera forward -->
+        <include file="$(find mini_quadrotor)/launch/includes/camera.launch">
+          <arg name="robot_ns" value="quadrotor" />
+          <arg name="camera_ns" value="usb_cam_forward" />
+          <arg name="image_width" default="1280" />
+          <arg name="image_height" default="720" />
+        </include>
+
       </group>
     </group>
 
