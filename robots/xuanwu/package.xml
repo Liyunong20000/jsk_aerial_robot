@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>xuanwu</name>
+  <version>1.0.1</version>
+  <description>The basic packages for xuanwu</description>
+
+  <maintainer email="yunong-li@dragon.t.u-tokyo.ac.jp">yunong li</maintainer>
+  <license>BSD</license>
+  <url type="website">https://github.com/Liyunong20000/jsk_aerial_robot/tree/develop/xuanwu_bricks</url>
+  <author email="yunong-li@dragon.t.u-tokyo.ac.jp">yunong li</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>mujoco_ros_control</build_depend>
+
+  <run_depend>aerial_robot_base</run_depend>
+  <run_depend>aerial_robot_control</run_depend>
+  <run_depend>aerial_robot_estimation</run_depend>
+  <run_depend>aerial_robot_model</run_depend>
+  <run_depend>aerial_robot_msgs</run_depend>
+  <run_depend>aerial_robot_simulation</run_depend>
+
+  <test_depend>rostest</test_depend>
+  
+</package>

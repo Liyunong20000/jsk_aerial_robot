@@ -1,0 +1,40 @@
+motor_info: # for xuanwu
+        min_pwm: 0.5 # 1000 [ms]
+        max_pwm: 0.9 # 1900 [ms]
+        min_thrust: 0 #  [N]
+        force_landing_thrust: 1.0 #[N]
+        pwm_conversion_mode: 1 # Polynominal Mode
+        vel_ref_num: 4
+        ref1:
+                voltage: 22.2
+                max_thrust: 12.7813 # N
+                polynominal4: -40.41890628  # x10^4
+                polynominal3: 123.81320742  # x10^3
+                polynominal2: -128.54223349  # x10^2
+                polynominal1: 79.15440507  # x10^1
+                polynominal0: 52.68857787  # x10^0
+        ref2:
+                voltage: 23.2
+                max_thrust: 13.4618 # N
+                polynominal4: -39.46230975  # x10^4
+                polynominal3: 125.23619181  # x10^3
+                polynominal2: -133.40109042  # x10^2
+                polynominal1:  80.29386897  # x10^1
+                polynominal0:  52.17414993  # x10^0
+        ref3:
+                voltage: 24.2
+                max_thrust: 14.0136 # N
+                polynominal4: -26.04178735  # x10^4
+                polynominal3: 90.26960340  # x10^3
+                polynominal2: -104.69293610  # x10^2
+                polynominal1:  71.35377132  # x10^1
+                polynominal0:  52.14231653  # x10^0
+        ref4:
+                voltage: 25.2
+                max_thrust: 14.6232 # N
+                polynominal4: -21.81537268  # x10^4
+                polynominal3: 79.98677681  # x10^3
+                polynominal2: -97.15987754  # x10^2
+                polynominal1:  68.04394261  # x10^1
+                polynominal0:  52.32156773  # x10^0
+
