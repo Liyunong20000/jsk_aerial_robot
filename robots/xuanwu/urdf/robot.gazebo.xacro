@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <robot
-    xmlns:xacro="http://www.ros.org/wiki/xacro" name="mini_quadrotor" >
+    xmlns:xacro="http://www.ros.org/wiki/xacro" name="xuanwu" >
 
-  <xacro:arg name="robot_name" default="quadrotor" />
+  <xacro:arg name="robot_name" default="xuanwu" />
 
   <!-- robot urdf -->
   <xacro:include filename="$(find xuanwu)/urdf/robot.urdf.xacro" />
