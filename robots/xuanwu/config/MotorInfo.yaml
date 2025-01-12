@@ -1,5 +1,5 @@
 motor_info: # for xuanwu
-        min_pwm: 0.5 # 1000 [ms]
+        min_pwm: 0.6 # 1000 [ms]
         max_pwm: 0.9 # 1900 [ms]
         min_thrust: 0 #  [N]
         force_landing_thrust: 1.0 #[N]
