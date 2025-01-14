@@ -2,6 +2,9 @@
 Changelog for package dragon
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.3.5 (2024-12-28)
+------------------
+
 1.3.4 (2024-11-02)
 ------------------
 * Resolve dependency to other package (`#610 <https://github.com/jsk-ros-pkg/jsk_aerial_robot/issues/610>`_)
