@@ -28,4 +28,3 @@ spinal
 *.elf.*
 *.elf
 TrueSTUDIO/longzhu2/.settings/language.settings.xml
-STM32CubeIDE/*.launch
