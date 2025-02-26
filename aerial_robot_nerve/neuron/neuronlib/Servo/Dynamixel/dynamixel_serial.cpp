@@ -119,18 +119,8 @@ void DynamixelSerial::reboot(uint8_t servo_index)
 	servo_[servo_index].first_get_pos_flag_ = true;
 }
 
-void DynamixelSerial::setTorque(uint8_t servo_index, bool torque_enable)
+void DynamixelSerial::setTorque(uint8_t servo_index)
 {
-  if(servo_[servo_index].force_servo_off_) return;
-
-  if (servo_[servo_index].torque_enable_ == torque_enable) return;
-  if (torque_enable) {
-    // send the lastest goal position to Spinal
-    servo_[servo_index].send_goal_position_ = true;
-  }
-
-  servo_[servo_index].torque_enable_ = torque_enable;
-
   instruction_buffer_.push(std::make_pair(INST_SET_TORQUE, servo_index));
 }
 
@@ -314,8 +304,12 @@ void DynamixelSerial::update()
           }
         }
 
-        setTorque(i, false); // servo off
         servo_[i].force_servo_off_ = true;
+
+        if (servo_[i].torque_enable_) {
+          servo_[i].torque_enable_= false;
+          setTorque(i); // servo off
+        }
       }
       else {
         servo_[i].force_servo_off_ = false;
@@ -699,12 +693,7 @@ int8_t DynamixelSerial::readStatusPacket(uint8_t status_packet_instruction)
                       s->internal_offset_ = std::floor(present_position / 4096.0) * -4096; // to convert [0, 4096]
                       s->first_get_pos_flag_ = false;
                     }
-                    s->present_position_ = present_position + s->internal_offset_;
-                  }
-
-                  // update goal position with internal servo encoder when the servo is off
-                  if (!s->torque_enable_) {
-                    s->goal_position_ = (present_position + s->internal_offset_) / s->resolution_ratio_;
+                    s->setPresentPosition(present_position);
                   }
 		}
                 return 0;
@@ -1012,7 +1001,7 @@ void DynamixelSerial::cmdSyncWriteGoalPosition()
 	uint8_t parameters[INSTRUCTION_PACKET_SIZE];
 
 	for (unsigned int i = 0; i < servo_num_; i++) {
-		int32_t goal_position = servo_[i].getInternalGoalPosition();
+		int32_t goal_position = servo_[i].getGoalPosition();
 		parameters[i * 4 + 0] = (uint8_t)((int32_t)(goal_position) & 0xFF);
 		parameters[i * 4 + 1] = (uint8_t)(((int32_t)(goal_position) >> 8) & 0xFF);
 		parameters[i * 4 + 2] = (uint8_t)(((int32_t)(goal_position) >> 16) & 0xFF);
