@@ -36,11 +36,7 @@
 #pragma once
 
 #include <aerial_robot_control/flight_navigation.h>
-#include <geometry_msgs/Vector3Stamped.h>
-#include <geometry_msgs/QuaternionStamped.h>
-#include <kdl_conversions/kdl_msg.h>
 #include <sensor_msgs/JointState.h>
-#include <nav_msgs/Odometry.h>
 #include <spinal/DesireCoord.h>
 
 namespace aerial_robot_navigation
@@ -58,13 +54,11 @@ namespace aerial_robot_navigation
 
     void update() override;
 
-    inline const bool getEqCoGWorldFlag() const { return eq_cog_world_; }
-
   private:
-    ros::Publisher target_baselink_rpy_pub_; // to spinal
+    ros::Publisher curr_target_baselink_rot_pub_;
     ros::Publisher joint_control_pub_;
-    ros::Subscriber final_target_baselink_rot_sub_, final_target_baselink_rpy_sub_;
-    ros::Subscriber target_rotation_motion_sub_;
+    ros::Subscriber final_target_baselink_rot_sub_;
+    ros::Subscriber target_baselink_rot_sub_;
 
     void halt() override;
     void reset() override;
@@ -75,15 +69,13 @@ namespace aerial_robot_navigation
     void baselinkRotationProcess();
     void rosParamInit() override;
 
-    void targetBaselinkRotCallback(const geometry_msgs::QuaternionStampedConstPtr & msg);
-    void targetBaselinkRPYCallback(const geometry_msgs::Vector3StampedConstPtr & msg);
-    void targetRotationMotionCallback(const nav_msgs::OdometryConstPtr& msg);
+    void setFinalTargetBaselinkRotCallback(const spinal::DesireCoordConstPtr & msg);
+    void targetBaselinkRotCallback(const spinal::DesireCoordConstPtr& msg);
 
     /* target baselink rotation */
     double prev_rotation_stamp_;
     std::vector<double> target_gimbal_angles_;
-    tf::Quaternion curr_target_baselink_rot_, final_target_baselink_rot_;
-    bool eq_cog_world_;
+    tf::Vector3 curr_target_baselink_rot_, final_target_baselink_rot_;
 
     /* landing process */
     bool level_flag_;
