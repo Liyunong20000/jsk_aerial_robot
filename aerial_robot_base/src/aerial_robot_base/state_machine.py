@@ -84,26 +84,17 @@ class Start(BaseState):
     def joyCallback(self, msg):
 
         # Check interfering from joy
-        interfere_flag = False
-
-        # This is PS4 Joy Controller
         if len(msg.axes) == 14 and len(msg.buttons) == 14:
+            # This is PS4 Joy Controller
             if msg.buttons[4] == 1 and msg.buttons[5] == 1:
 
-                interfere_flag = True
+                if not self.flags['interfere_mode']:
+                    rospy.loginfo("Enter interfere mode")
+                    self.flags['interfere_mode'] = True
 
-        # This is RoG1 Controller
-        if len(msg.axes) == 8 and len(msg.buttons) == 11:
-            if msg.buttons[4] == 1 and msg.buttons[5] == 1:
-
-                interfere_flag = True
-
-        if interfere_flag:
-            if not self.flags['interfere_mode']:
-                rospy.loginfo("Enter interfere mode")
-                self.flags['interfere_mode'] = True
-
-        self.flags['interfering'] = interfere_flag
+                self.flags['interfering'] = True
+            else:
+                self.flags['interfering'] = False
 
     def execute(self, userdata):
 
