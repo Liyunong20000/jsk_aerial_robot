@@ -60,8 +60,7 @@ namespace Spine
   int8_t getUavModel();
   void useRTOS(osMailQId* handle);
   void setServoControlFlag(bool flag);
-  void servoPositionCallback(const spinal::ServoControlCmd& control_msg);
-  void servoCurrentCallback(const spinal::ServoControlCmd& control_msg);
+  void servoControlCallback(const spinal::ServoControlCmd& control_msg);
   void servoTorqueControlCallback(const spinal::ServoTorqueCmd& control_msg);
   void boardInfoCallback(const spinal::GetBoardInfo::Request& req, spinal::GetBoardInfo::Response& res);
   void boardConfigCallback(const spinal::SetBoardConfig::Request& req, spinal::SetBoardConfig::Response& res);
