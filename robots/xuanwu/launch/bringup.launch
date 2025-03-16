@@ -49,6 +49,9 @@
 
     ###########  Navigation  ###########
     <rosparam file="$(arg config_dir)/NavigationConfig.yaml" command="load" />
+
+    ###########  ServoMotor  ###########
+    <rosparam file="$(arg config_dir)/ServoInfo.yaml" command="load" />
   </group>
 
   ###########  Base Platform  ###########
