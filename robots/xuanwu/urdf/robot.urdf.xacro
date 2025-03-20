@@ -113,7 +113,7 @@
   <!-- main_body -->
   <link name="main_body">
     <inertial>
-      <mass value = "0.925" />
+      <mass value = "1.230" />
       <origin xyz="0.00109 0.00008 0.01968" rpy="0 0 0"/> <!-- TODO: true cog pos -->
       <inertia
           ixx="0.00676315944" ixy="0" ixz="0"
@@ -148,7 +148,8 @@
 
   <!-- livox mid360 -->
   <xacro:extra_module name = "lidar_imu" parent = "main_body" visible = "0" > <!-- should be IMU frame -->
-    <origin xyz="${0.011} ${0.02329} ${0.05879 + 0.047 - 0.04412}" rpy="0 0 0"/>
+    <!-- <origin xyz="${0.011} ${0.02329} ${0.05879 + 0.047 - 0.04412}" rpy="0 0 0"/> -->
+    <origin xyz="0 0 0.0328" rpy="0 0 0"/>
     <inertial>
       <mass value = "00" />
       <origin xyz="0 0 0" rpy="0 0 0"/>
