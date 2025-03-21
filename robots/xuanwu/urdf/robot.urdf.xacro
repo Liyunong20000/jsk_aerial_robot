@@ -123,7 +123,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://xuanwu/urdf/mesh/xuanwu_gripper_livox360.dae" />
+        <mesh filename="package://xuanwu/urdf/mesh/drone_gripper_battery_LiDAR.dae" />
       </geometry>
     </visual>
     <collision>
