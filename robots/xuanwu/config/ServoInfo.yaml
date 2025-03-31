@@ -1,4 +1,4 @@
 servo_info: # for xuanwu_gripper_servo dynamixel_XH430_W350_R
         min_angles: 750 # 1000 [ms]
-        max_angles: 1350 # degree
+        max_angles: 1400 # degree
         max_load: 200
