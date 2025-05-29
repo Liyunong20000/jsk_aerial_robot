@@ -22,7 +22,14 @@
         <include file="$(find fast_lio)/launch/mapping_mid360.launch" >
           <arg name="rviz" value="false" />
         </include>
-
+        
+	<!-- usb_cam -->
+	<include file="$(find xuanwu)/launch/includes/aerial_camera_apriltag.launch" >
+          <arg name="image_width" value="1280" />
+          <arg name="image_height" value="720" />
+          <arg name="robot_ns" value="$(arg robot_ns)" />
+        </include>
+        
       </group>
     </group>
 
