@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <launch>
-  <arg name="dev_ns" default="" />
+  <arg name="dev_ns" default="aerial_camera" />
   <arg name="image_width" default="1280" />
   <arg name="image_height" default="720" />
   <arg name="robot_ns" default="xuanwu" />
