@@ -114,11 +114,11 @@
   <link name="main_body">
     <inertial>
       <mass value = "1.666" />
-      <origin xyz="0.00093 -0.00007 -0.00477" rpy="0 0 0"/> <!-- TODO: true cog pos -->
+      <origin xyz="0.00132 0.00007 -0.00738" rpy="0 0 0"/>
       <inertia
-          ixx="0.01079536794" ixy="0" ixz="0"
-          iyy="0.01024013115" iyz="0"
-          izz="0.01187755262"/>
+          ixx="0.01171975383" ixy="0" ixz="0"
+          iyy="0.01269245515" iyz="0"
+          izz="0.01115712375"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -129,7 +129,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="0.45227 0.45227 0.2295" />
+        <box size="0.45227 0.45227 0.2853" />
       </geometry>
     </collision>
   </link>
