@@ -113,23 +113,23 @@
   <!-- main_body -->
   <link name="main_body">
     <inertial>
-      <mass value = "1.900" />
-      <origin xyz="0.00147 -0.00007 -0.01451" rpy="0 0 0"/>
+      <mass value = "1.767" />
+      <origin xyz="0.0013 0.00004 -0.00754" rpy="0 0 0"/>
       <inertia
-          ixx="0.01400956434" ixy="0" ixz="0"
-          iyy="0.01345117632" iyz="0"
-          izz="0.01544169758"/>
+          ixx="0.01319022271" ixy="0" ixz="0"
+          iyy="0.01262070107" iyz="0"
+          izz="0.01546757494"/>
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://xuanwu/urdf/mesh/drone_gripper_battery_LiDAR_1300_gripper_180mm.dae" />
+        <mesh filename="package://xuanwu/urdf/mesh/drone_gripper_battery_LiDAR_1300.dae" />
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="0.48056 0.48056 0.3133" />
+        <box size="0.48064 0.48064 0.2853" />
       </geometry>
     </collision>
   </link>
