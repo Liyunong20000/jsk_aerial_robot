@@ -1,6 +1,7 @@
 <?xml version="1.0"?>
 <robot
     xmlns:xacro="http://www.ros.org/wiki/xacro" name="module_quadrotor" >
+  <!-- This is a mode for xuanwu with 100mm gripper -->
 
   <!-- general attribute -->
   <baselink name="fc" />
