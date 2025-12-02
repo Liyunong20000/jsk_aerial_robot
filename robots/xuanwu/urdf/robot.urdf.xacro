@@ -123,7 +123,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://xuanwu/urdf/mesh/drone_gripper_battery_LiDAR_1300_gripper_180mm.dae" />
+        <mesh filename="package://xuanwu/urdf/mesh/drone_downward.dae" />
       </geometry>
     </visual>
     <collision>
@@ -159,12 +159,33 @@
     </inertial>
   </xacro:extra_module>
 
+  <!-- downward camera -->
+  <xacro:extra_module name = "aerial_robot_camera_frame" parent = "main_body" visible = "0" >
+    <origin xyz="-0.003 0 -0.1042" rpy="0 0 0"/>
+    <inertial>
+      <mass value = "0.00001" />
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia
+          ixx="0.0" ixy="0.0" ixz="0.0"
+          iyy="0.0" iyz="0.0" izz="0.0"/>
+    </inertial>
+  </xacro:extra_module>
+
+  <xacro:extra_module name = "aerial_robot_camera_optical_frame" parent = "aerial_robot_camera_frame" visible = "0" >
+    <origin xyz="0 0 0" rpy="0 ${pi/2} 0"/>
+    <inertial>
+      <mass value = "0.00001" />
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia
+          ixx="0.0" ixy="0.0" ixz="0.0"
+          iyy="0.0" iyz="0.0" izz="0.0"/>
+    </inertial>
+  </xacro:extra_module>
 
   <!-- propellers -->
   <xacro:propeller_module id = "1" x = "${-rotor_x}" y = "${-rotor_y}" z = "${rotor_z}" direction = "1" />
   <xacro:propeller_module id = "2" x = "${rotor_x}" y = "${-rotor_y}" z = "${rotor_z}" direction = "-1" />
   <xacro:propeller_module id = "3" x = "${-rotor_x}" y = "${rotor_y}" z = "${rotor_z}" direction = "-1" />
   <xacro:propeller_module id = "4" x = "${rotor_x}" y = "${rotor_y}" z = "${rotor_z}"  direction = "1" />
-
 
 </robot>
