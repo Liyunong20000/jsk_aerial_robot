@@ -39,5 +39,11 @@
       <uri>model://ground_plane</uri>
     </include>
 
+    <model name="april_tag0" >
+      <pose>0.0 0.0 0.0 0 0 0</pose>
+      <include>
+        <uri>model://Apriltag36_11_00000_small//</uri>
+      </include>
+    </model>
   </world>
 </sdf>
