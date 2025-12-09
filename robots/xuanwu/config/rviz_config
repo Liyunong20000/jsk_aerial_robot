@@ -61,9 +61,13 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: true
+        drone_board:
+          Value: true
         world:
           Value: true
         xuanwu/aerial_robot_camera_frame:
+          Value: true
+        xuanwu/aerial_robot_camera_optical_frame:
           Value: true
         xuanwu/cog:
           Value: true
@@ -96,7 +100,10 @@ Visualization Manager:
               {}
             xuanwu/main_body:
               xuanwu/aerial_robot_camera_frame:
-                {}
+                drone_board:
+                  {}
+                xuanwu/aerial_robot_camera_optical_frame:
+                  {}
               xuanwu/fc:
                 {}
               xuanwu/lidar_imu:
@@ -122,6 +129,10 @@ Visualization Manager:
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
         aerial_robot_camera_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        aerial_robot_camera_optical_frame:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -170,7 +181,7 @@ Visualization Manager:
       Visual Enabled: true
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /aerial_robot_camera/usb_cam/image_raw
+      Image Topic: /xuanwu/tag_detections_image
       Max Value: 1
       Median window: 5
       Min Value: 0
