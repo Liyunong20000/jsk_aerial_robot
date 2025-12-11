@@ -1,0 +1,39 @@
+# ESKF.yaml
+
+# --- Topics ---
+box_odom_topic: "/xuanwu/noisy_odom"
+cam_odom_topic: "/qikin/camera_odom"
+fused_odom_topic: "/xuanwu/eskf/odom"
+
+# --- Process noise (Q_proc_) diagonal (12 entries) ---
+# Order in your code:
+#   0-2: position error (δr)
+#   3-5: attitude error (φ)
+#   6-8: linear velocity error (δv)
+#   9-11: angular velocity error (δω)
+Q_proc_diag: [
+  1e-4, 1e-4, 1e-4,    # δr
+  1e-5, 1e-5, 1e-5,    # φ
+  1e-3, 1e-3, 1e-3,    # δv
+  1e-3, 1e-3, 1e-3     # δω
+]
+
+# --- Measurement noise for camera odom (R_cam_) diagonal (6 entries) ---
+#   0-2: δr
+#   3-5: φ
+R_cam_diag: [
+  1e-4, 1e-4, 1e-4,    # δr
+  1e-4, 1e-4, 1e-4     # φ
+]
+
+# --- Measurement noise for box odom (R_box_) diagonal (12 entries) ---
+#   0-2: δr
+#   3-5: φ
+#   6-8: δv
+#   9-11: δω
+R_box_diag: [
+  1e-3, 1e-3, 1e-3,    # δr
+  1e-3, 1e-3, 1e-3,    # φ
+  1e-2, 1e-2, 1e-2,    # δv
+  1e-2, 1e-2, 1e-2     # δω
+]

@@ -1,0 +1,9 @@
+camera_pose_body:
+  # Translation from Body Center (IMU) to Camera Lens [x, y, z] in meters
+  # Example: 5cm forward, 0cm lateral, 2cm down
+  translation_B_C: [0.05, 0.0, -0.02]
+
+  # Rotation around the Optical Z-axis in degrees.
+  # 0.0  -> Top of image points Robot Forward
+  # 90.0 -> Top of image points Robot Right (common for landscape mounting)
+  z_rotation_deg: 90.0
