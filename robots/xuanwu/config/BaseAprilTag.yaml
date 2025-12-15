@@ -2,6 +2,7 @@ apriltag_pose_world:
   # Position of the Tag center in World Frame [x, y, z] in meters
   # Example: Tag is at Origin
   position: [1.0, 1.0, 0.0]
+  target_tag_frame_name: "land_mark"
 
   # Tag id
   target_tag_id: 0

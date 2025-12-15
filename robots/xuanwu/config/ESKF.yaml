@@ -5,6 +5,10 @@ box_odom_topic: "/xuanwu/noisy_odom"
 cam_odom_topic: "/xuanwu/tag_detections"
 fused_odom_topic: "/xuanwu/eskf/odom"
 
+imu_frame_name : "xuanwu/lidar_imu"
+
+camera_z_bias : 0.005
+
 # --- Process noise (Q_proc_) diagonal (12 entries) ---
 # Order in your code:
 #   0-2: position error (δr)

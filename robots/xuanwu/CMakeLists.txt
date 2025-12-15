@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   gazebo_msgs
   apriltag_ros
   tf
+  dynamic_reconfigure
 )
 
 find_package(Eigen3 REQUIRED)
@@ -29,6 +30,11 @@ set(AUTODIFF_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/autodiff)
 #else()
 #    message(FATAL_ERROR "qpOASES not found in third_party/qpOASES")
 #endif()
+
+# MUST come before catkin_package()
+generate_dynamic_reconfigure_options(
+  cfg/Eskf.cfg
+)
 
 catkin_package(
   CATKIN_DEPENDS aerial_robot_control aerial_robot_estimation aerial_robot_model

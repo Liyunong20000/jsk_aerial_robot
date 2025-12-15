@@ -36,6 +36,19 @@ public:
     R_box_  = r_box_diag.asDiagonal();
   }
 
+  // --- Setters for Dynamic Reconfigure ---
+  void setProcessNoise(const Eigen::Matrix<double, ERR_STATE_DIM, ERR_STATE_DIM>& Q) {
+    Q_proc_ = Q;
+  }
+
+  void setCamMeasurementNoise(const Eigen::Matrix<double, 6, 6>& R) {
+    R_cam_ = R;
+  }
+
+  void setBoxMeasurementNoise(const Eigen::Matrix<double, ERR_STATE_DIM, ERR_STATE_DIM>& R) {
+    R_box_ = R;
+  }
+
   bool isInitialized() const { return initialized_; }
 
   // Initialize nominal state from black-box odometry

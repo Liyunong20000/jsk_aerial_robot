@@ -6,6 +6,14 @@
 
 #include <apriltag_ros/AprilTagDetectionArray.h>
 
+#include <dynamic_reconfigure/server.h>
+#include <xuanwu/EskfConfig.h>
+
+// TF2 Includes (The new engine)
+#include <tf2_ros/transform_listener.h>
+#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+
 #include <Eigen/Dense>
 #include <string>
 #include <vector>
@@ -13,16 +21,14 @@
 #include "state_wrappers.hpp"  // for ERR_STATE_DIM, NOM_STATE_DIM
 #include "eskf.hpp"
 
-#include "DownwardCamera.hpp"
-
 // ============================= ROS façade ==================================
 class EskfNode
 {
 public:
   explicit EskfNode(ros::NodeHandle& nh)
     : nh_(nh)
+    , tf_listener_(tf_buffer_)
     , filter_(loadQProcDiag(nh_), loadRCamDiag(nh_), loadRBoxDiag(nh_))
-    , camera_pose_(loadCameraPose(nh_))
     , tag_pose_world_(loadTagPose(nh_))
   {
     // --- Topics ---
@@ -30,28 +36,47 @@ public:
     nh_.param<std::string>("cam_odom_topic",   cam_topic_,   std::string("/xuanwu/tag_detections"));
     nh_.param<std::string>("fused_odom_topic", fused_topic_, std::string("/xuanwu/eskf/odom"));
     nh_.param<int>("target_tag_id", target_tag_id_, 0);
+    nh_.param<float>("camera_z_bias", camera_z_bias_, 0.0);
+    nh_.param<std::string>("imu_frame_name", body_frame_id_, std::string("xuanwu/lidar_imu"));
+    nh_.param<std::string>("target_tag_frame_name", target_tag_frame_name_, std::string("land_mark"));
 
     box_sub_   = nh_.subscribe(box_topic_, 10, &EskfNode::boxCallback, this);
     cam_sub_   = nh_.subscribe(cam_topic_, 10, &EskfNode::camCallback, this);
     fused_pub_ = nh_.advertise<nav_msgs::Odometry>(fused_topic_, 10);
+    debug_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("/xuanwu/debug/vision_pose", 10);
+    
+    dr_callback_ = boost::bind(&EskfNode::reconfigureCallback, this, _1, _2);
+    dr_server_.setCallback(dr_callback_);
   }
 
 private:
   ros::NodeHandle nh_;
+
+  // --- TF2 Members ---
+  tf2_ros::Buffer tf_buffer_;
+  tf2_ros::TransformListener tf_listener_;
+
   ros::Subscriber box_sub_;
   ros::Subscriber cam_sub_;
   ros::Publisher  fused_pub_;
+  ros::Publisher  debug_pub_;
   std::string box_topic_, cam_topic_, fused_topic_;
+  std::string target_tag_frame_name_; 
   int target_tag_id_;
 
-  std::string world_frame_id_ = "world";      // Default
-  std::string body_frame_id_  = "base_link";  // Default
+  float camera_z_bias_ = 0.0;
+
+  std::string world_frame_id_ = "world";
+  std::string body_frame_id_;
 
   Eskf filter_;
   ros::Time last_time_;
 
-  DownwardCamera camera_pose_;
   Eigen::Affine3d tag_pose_world_;
+
+  // Dynamic Reconfigure Members
+  dynamic_reconfigure::Server<your_package_name::EskfConfig> dr_server_;
+  dynamic_reconfigure::Server<your_package_name::EskfConfig>::CallbackType dr_callback_;
 
   // ------- Param loaders for noise diagonals --------
   static Eigen::Matrix<double, ERR_STATE_DIM, 1>
@@ -118,26 +143,37 @@ private:
     return diag;
   }
 
-  // Load Camera Pose from Embedded_Camera.yaml
-  static DownwardCamera loadCameraPose(ros::NodeHandle& nh)
+  void reconfigureCallback(your_package_name::EskfConfig &config, uint32_t level) 
   {
-    std::vector<double> trans_list;
-    double z_rot = 90.0; // Default fallback
+    ROS_INFO("Reconfiguring ESKF gains...");
 
-    // Attempt to load "camera_pose_body/translation_B_C" (x, y, z)
-    Eigen::Vector3d offset(0.05, 0.0, -0.02); // Default fallback
-    if (nh.getParam("camera_pose_body/translation_B_C", trans_list) && trans_list.size() == 3) {
-        offset << trans_list[0], trans_list[1], trans_list[2];
-    } else {
-        ROS_WARN("ESKF: using default camera offset [0.05, 0, -0.02]");
-    }
+    // Update Camera Bias
+    this->camera_z_bias_ = config.camera_z_bias;
 
-    // Attempt to load "camera_pose_body/z_rotation_deg"
-    if (!nh.getParam("camera_pose_body/z_rotation_deg", z_rot)) {
-        ROS_WARN("ESKF: using default camera rotation 90.0 deg");
-    }
+    // --- Build Q (Process Noise) ---
+    Eigen::Matrix<double, ERR_STATE_DIM, 1> Q_diag;
+    Q_diag.segment<3>(0).setConstant(config.Q_pos);     // dr
+    Q_diag.segment<3>(3).setConstant(config.Q_att);     // phi
+    Q_diag.segment<3>(6).setConstant(config.Q_vel);     // dv
+    Q_diag.segment<3>(9).setConstant(config.Q_ang_vel); // dw
+    
+    // --- Build R_cam ---
+    Eigen::Matrix<double, 6, 1> R_cam_diag;
+    R_cam_diag.segment<3>(0).setConstant(config.R_cam_pos);
+    R_cam_diag.segment<3>(3).setConstant(config.R_cam_att);
 
-    return DownwardCamera(offset, z_rot);
+    // --- Build R_box ---
+    Eigen::Matrix<double, ERR_STATE_DIM, 1> R_box_diag;
+    R_box_diag.segment<3>(0).setConstant(config.R_box_pos);
+    R_box_diag.segment<3>(3).setConstant(config.R_box_att);
+    R_box_diag.segment<3>(6).setConstant(config.R_box_vel);
+    R_box_diag.segment<3>(9).setConstant(config.R_box_ang_vel);
+
+    // --- Push to Filter Core ---
+    // This is where we use the setters we made in Step 1
+    filter_.setProcessNoise(Q_diag.asDiagonal());
+    filter_.setCamMeasurementNoise(R_cam_diag.asDiagonal());
+    filter_.setBoxMeasurementNoise(R_box_diag.asDiagonal());
   }
 
   // Load Tag Pose from BaseAprilTag.yaml
@@ -171,8 +207,8 @@ private:
   // --------------------- Callbacks ------------------------
   void boxCallback(const nav_msgs::OdometryConstPtr& msg)
   {
-    world_frame_id_ = msg->header.frame_id; // Capture "world" from blackbox
-    body_frame_id_  = msg->child_frame_id;  // Capture "base_link" from blackbox
+    //world_frame_id_ = msg->header.frame_id; // Capture "world" from blackbox
+    //body_frame_id_  = msg->child_frame_id;  // Capture "base_link" from blackbox
     
     if (!filter_.isInitialized())
     {
@@ -229,47 +265,70 @@ private:
       last_time_ = msg->header.stamp;
     }
 
-    // Extract Pose from the detected tag
-    // The pose is in msg->detections[i].pose.pose.pose
-    auto& tag_pose = msg->detections[found_index].pose.pose.pose;
+    // 3. TF MAGIC: Get Transform from Body -> Tag
+    // We rely on apriltag_ros publishing the TF frame (e.g. "tag_0")
+    // TF automatically handles: Base -> Camera -> Optical -> Tag
+    Eigen::Affine3d T_Body_Tag; 
+    
+    try {
+        // Ask TF: "What is the Tag's pose relative to the Body Frame?"
+        // We use a small timeout in case TF is slightly behind the message
+        geometry_msgs::TransformStamped tf_body_tag = tf_buffer_.lookupTransform(
+            body_frame_id_,      // Target: Base Link
+            target_tag_frame_name_,      // Source: Tag Frame
+            msg->header.stamp,   // Time: Sync with image
+            ros::Duration(0.1)); // Timeout
 
+        T_Body_Tag = tf2::transformToEigen(tf_body_tag);
 
-    // Apply "Pseudo-Measurement" strategy before passing the message to the filter
-    // 1st - Create Transform from Msg (Tag in Camera Frame)
-    Eigen::Affine3d T_C_Tag = Eigen::Affine3d::Identity();
-    T_C_Tag.translate(Eigen::Vector3d(tag_pose.position.x, tag_pose.position.y, tag_pose.position.z));
-    T_C_Tag.rotate(Eigen::Quaterniond(tag_pose.orientation.w, tag_pose.orientation.x, tag_pose.orientation.y, tag_pose.orientation.z));    
+    } catch (tf2::TransformException &ex) {
+        ROS_WARN("ESKF: Could not lookup tag transform: %s", ex.what());
+        return;
+    }
+    
+    // 4. Compute Robot Pose in World
+    // Logic: 
+    //   We know T_World_Tag (from map/yaml)
+    //   We measured T_Body_Tag (from TF)
+    //   We want T_World_Body
+    //   
+    //   T_World_Body * T_Body_Tag = T_World_Tag
+    //   T_World_Body = T_World_Tag * (T_Body_Tag)^-1
+    
+    Eigen::Affine3d T_World_Body = tag_pose_world_ * T_Body_Tag.inverse(); 
 
-    auto T_Cam_B = camera_pose_.getInverseExtrinsics_T_C_B();
+    // Prepare Data
+    Eigen::Vector3d p = T_World_Body.translation();
+    Eigen::Quaterniond q(T_World_Body.rotation());
 
-    // 2nd - Invert Chain: Body_World = Tag_World * (Tag_Cam)^-1 * (Cam_Body)^-1
-    // T_B_Cam_ and T_W_Tag_ should be member variables
-    Eigen::Affine3d T_W_B = tag_pose_world_ * T_C_Tag * T_Cam_B; // Here in theory should be inverse at C Tag...
+    // --- Publish Debug Pose ---
+    geometry_msgs::PoseStamped debug_pose;
+    debug_pose.header.stamp = msg->header.stamp;
+    debug_pose.header.frame_id = world_frame_id_; // Should be "world"
+    
+    debug_pose.pose.position.x = p.x();
+    debug_pose.pose.position.y = p.y();
+    debug_pose.pose.position.z = p.z() + camera_z_bias_;
+    debug_pose.pose.orientation.w = q.w();
+    debug_pose.pose.orientation.x = q.x();
+    debug_pose.pose.orientation.y = q.y();
+    debug_pose.pose.orientation.z = q.z();
+    
+    debug_pub_.publish(debug_pose);
 
-    // 3rd - Update Msg with calculated Body Pose
+    // --- Feed Filter ---
     nav_msgs::Odometry corrected_msg;
-    corrected_msg.header = msg->header; // Copy timestamp/frame
-    
-    corrected_msg.header.frame_id = world_frame_id_;
-    corrected_msg.child_frame_id  = body_frame_id_;
-
-    Eigen::Vector3d p = T_W_B.translation();
-    Eigen::Quaterniond q(T_W_B.rotation());
-
-    corrected_msg.pose.pose.position.x = p.x();
-    corrected_msg.pose.pose.position.y = p.y();
-    corrected_msg.pose.pose.position.z = p.z();
-    
-    corrected_msg.pose.pose.orientation.w = q.w();
-    corrected_msg.pose.pose.orientation.x = q.x();
-    corrected_msg.pose.pose.orientation.y = q.y();
-    corrected_msg.pose.pose.orientation.z = q.z();
+    corrected_msg.header = debug_pose.header;
+    corrected_msg.child_frame_id = body_frame_id_;
+    corrected_msg.pose.pose = debug_pose.pose;
 
     filter_.updateWithCam(corrected_msg);
+
     auto out = filter_.makeOdometry(msg->header.stamp, 
                                    world_frame_id_, 
                                    body_frame_id_);
     fused_pub_.publish(out);
+   
   }
 };
 

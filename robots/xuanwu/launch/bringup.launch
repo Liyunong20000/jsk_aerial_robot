@@ -106,7 +106,6 @@
   ###########  ESKF Config  ###########
   <node pkg="xuanwu" type="eskf_node" name="eskf" ns="$(arg robot_ns)" output="screen">
     <rosparam file="$(arg config_dir)/ESKF.yaml" command="load" />
-    <rosparam file="$(arg config_dir)/Embedded_Camera.yaml" command="load" />
     <rosparam file="$(arg config_dir)/BaseAprilTag.yaml" command="load" />
   </node>
 
