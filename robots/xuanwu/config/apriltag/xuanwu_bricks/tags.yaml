@@ -1,6 +1,6 @@
 standalone_tags:
   [
-  {id: 0, size: 0.2, name: drone_board},
+  {id: 0, size: 0.16, name: drone_board},
 #  {id: 1, size: 0.5, name: drone_board_01},
   ]
 # ## Tag bundle definitions

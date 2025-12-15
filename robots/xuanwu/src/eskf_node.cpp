@@ -4,6 +4,8 @@
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/Quaternion.h>
 
+#include <apriltag_ros/AprilTagDetectionArray.h>
+
 #include <Eigen/Dense>
 #include <string>
 #include <vector>
@@ -25,8 +27,9 @@ public:
   {
     // --- Topics ---
     nh_.param<std::string>("box_odom_topic",   box_topic_,   std::string("/xuanwu/noisy_odom"));
-    nh_.param<std::string>("cam_odom_topic",   cam_topic_,   std::string("/qikin/camera_odom"));
+    nh_.param<std::string>("cam_odom_topic",   cam_topic_,   std::string("/xuanwu/tag_detections"));
     nh_.param<std::string>("fused_odom_topic", fused_topic_, std::string("/xuanwu/eskf/odom"));
+    nh_.param<int>("target_tag_id", target_tag_id_, 0);
 
     box_sub_   = nh_.subscribe(box_topic_, 10, &EskfNode::boxCallback, this);
     cam_sub_   = nh_.subscribe(cam_topic_, 10, &EskfNode::camCallback, this);
@@ -39,6 +42,7 @@ private:
   ros::Subscriber cam_sub_;
   ros::Publisher  fused_pub_;
   std::string box_topic_, cam_topic_, fused_topic_;
+  int target_tag_id_;
 
   std::string world_frame_id_ = "world";      // Default
   std::string body_frame_id_  = "base_link";  // Default
@@ -195,10 +199,27 @@ private:
     fused_pub_.publish(out);
   }
 
-  void camCallback(const nav_msgs::OdometryConstPtr& msg)
+  void camCallback(const apriltag_ros::AprilTagDetectionArrayConstPtr& msg)
   {
     if (!filter_.isInitialized())
       return;
+
+    // Check and iterate through messages
+    if (msg->detections.empty()) {
+        return; // No tags seen this frame
+    }
+
+    int found_index = -1;
+
+    for (size_t i = 0; i < msg->detections.size(); ++i) {
+        // Note: detections[i].id is a vector (bundles), for single tags it has size 1
+        if (msg->detections[i].id.size() > 0 && msg->detections[i].id[0] == target_tag_id_) {
+            found_index = i;
+            break;
+        }
+    }
+
+    if (found_index == -1) return; // Target tag not found in this image
 
     double dt = (msg->header.stamp - last_time_).toSec();
     if (dt > 0.0)
@@ -208,20 +229,30 @@ private:
       last_time_ = msg->header.stamp;
     }
 
+    // Extract Pose from the detected tag
+    // The pose is in msg->detections[i].pose.pose.pose
+    auto& tag_pose = msg->detections[found_index].pose.pose.pose;
+
+
     // Apply "Pseudo-Measurement" strategy before passing the message to the filter
     // 1st - Create Transform from Msg (Tag in Camera Frame)
     Eigen::Affine3d T_C_Tag = Eigen::Affine3d::Identity();
-    T_C_Tag.translate(Eigen::Vector3d(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z));
-    T_C_Tag.rotate(Eigen::Quaterniond(msg->pose.pose.orientation.w, msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z));
-    
+    T_C_Tag.translate(Eigen::Vector3d(tag_pose.position.x, tag_pose.position.y, tag_pose.position.z));
+    T_C_Tag.rotate(Eigen::Quaterniond(tag_pose.orientation.w, tag_pose.orientation.x, tag_pose.orientation.y, tag_pose.orientation.z));    
+
     auto T_Cam_B = camera_pose_.getInverseExtrinsics_T_C_B();
 
     // 2nd - Invert Chain: Body_World = Tag_World * (Tag_Cam)^-1 * (Cam_Body)^-1
     // T_B_Cam_ and T_W_Tag_ should be member variables
-    Eigen::Affine3d T_W_B = tag_pose_world_ * T_C_Tag.inverse() * T_Cam_B;
+    Eigen::Affine3d T_W_B = tag_pose_world_ * T_C_Tag * T_Cam_B; // Here in theory should be inverse at C Tag...
 
     // 3rd - Update Msg with calculated Body Pose
-    nav_msgs::Odometry corrected_msg = *msg; 
+    nav_msgs::Odometry corrected_msg;
+    corrected_msg.header = msg->header; // Copy timestamp/frame
+    
+    corrected_msg.header.frame_id = world_frame_id_;
+    corrected_msg.child_frame_id  = body_frame_id_;
+
     Eigen::Vector3d p = T_W_B.translation();
     Eigen::Quaterniond q(T_W_B.rotation());
 

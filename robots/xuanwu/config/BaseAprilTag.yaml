@@ -1,7 +1,10 @@
 apriltag_pose_world:
   # Position of the Tag center in World Frame [x, y, z] in meters
   # Example: Tag is at Origin
-  position: [0.0, 0.0, 0.0]
+  position: [1.0, 1.0, 0.0]
+
+  # Tag id
+  target_tag_id: 0
 
   # Orientation of the Tag in World Frame [Roll, Pitch, Yaw] in Radians
   # Example: Tag is flat on the ground (Z-up), aligned with World X

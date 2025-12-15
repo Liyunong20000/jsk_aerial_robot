@@ -7,6 +7,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   nav_msgs
   gazebo_msgs
+  apriltag_ros
   tf
 )
 
@@ -19,19 +20,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # path to the autodiff checkout inside this package (autodiff is header only)
 set(AUTODIFF_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/autodiff)
 
-# Settings for qpOASES
-# Compiles qpOASES along with your project
-set(QPOASES_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/qpOASES)
-# Check if directory exists to avoid build errors if you forgot Step 1
-if(EXISTS "${QPOASES_ROOT}/CMakeLists.txt")
-    add_subdirectory(${QPOASES_ROOT})
-else()
-    message(FATAL_ERROR "qpOASES not found in third_party/qpOASES")
-endif()
+## Settings for qpOASES
+## Compiles qpOASES along with your project
+#set(QPOASES_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/qpOASES)
+## Check if directory exists to avoid build errors if you forgot Step 1
+#if(EXISTS "${QPOASES_ROOT}/CMakeLists.txt")
+#    add_subdirectory(${QPOASES_ROOT})
+#else()
+#    message(FATAL_ERROR "qpOASES not found in third_party/qpOASES")
+#endif()
 
 catkin_package(
   CATKIN_DEPENDS aerial_robot_control aerial_robot_estimation aerial_robot_model
-  INCLUDE_DIRS ${AUTODIFF_ROOT} ${QPOASES_ROOT}/include # export headers
+  INCLUDE_DIRS ${AUTODIFF_ROOT} #${QPOASES_ROOT}/include # export headers
 )
 
 # === include the headers for external libraries ===
@@ -39,7 +40,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${AUTODIFF_ROOT}
   ${EIGEN3_INCLUDE_DIRS}
-  ${QPOASES_ROOT}/include
+  #  ${QPOASES_ROOT}/include
 )
 
 add_executable(noisy_odom src/noisy_odom.cpp)
@@ -54,12 +55,12 @@ add_executable(odom_logger src/odom_logger.cpp)
 target_link_libraries(odom_logger ${catkin_LIBRARIES})
 add_dependencies(odom_logger ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-add_executable(planner src/planner.cpp)
-target_link_libraries(planner
-	${catkin_LIBRARIES}
-	qpOASES
-)
-add_dependencies(planner ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#add_executable(planner src/planner.cpp)
+#target_link_libraries(planner
+#	${catkin_LIBRARIES}
+#	qpOASES
+#)
+#add_dependencies(planner ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 install(DIRECTORY config launch
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
