@@ -109,6 +109,11 @@
     <rosparam file="$(arg config_dir)/BaseAprilTag.yaml" command="load" />
   </node>
 
+  ###########  MPC Planner  ###########
+ <!-- <node pkg="xuanwu" type="mpc_planner_node" name="mpc_planner" output="screen">
+    <rosparam file="$(arg config_dir)/Planner.yaml" command="load" />
+  </node> -->
+
   ########## Simulation in Mujoco #########
 <!--   <include file="$(find aerial_robot_simulation)/launch/mujoco.launch" if="$(eval arg('simulation') and not arg('real_machine') and arg('mujoco'))" > -->
 <!--     <arg name="robot_ns" value="$(arg robot_ns)" /> -->
