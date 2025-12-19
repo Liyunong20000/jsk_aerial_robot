@@ -143,7 +143,7 @@ public:
 
         // 6. Angular Velocity Dynamics
         T l_val = T(l_);
-        T ratio = T(force_torque_ratio_);
+        T ratio = T(force_torque_ratio_);// / T(thrust_limit_);
 
         Vector3T tau;
         tau(0) = l_val * (u(1) - u(3));

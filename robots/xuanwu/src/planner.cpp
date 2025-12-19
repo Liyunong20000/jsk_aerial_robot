@@ -162,24 +162,7 @@ public:
         Vector4u u_hov = Vector4u::Constant(u_val);
 
         return {x_hov, u_hov};
-    }
-
-    // =====================================================================
-    // REDUCE STATE
-    // =====================================================================
-    Vector12 reduceState(const Vector13& x_full) const {
-        Vector12 x_red;
-        x_red.head<3>() = x_full.head<3>(); // r
-        
-        Eigen::Vector4d q = x_full.segment<4>(3);
-        q.normalize();
-        
-        // q -> Rodrigues
-        x_red.segment<3>(3) = quatToRodrigues<Scalar>(q);
-        
-        x_red.tail<6>() = x_full.tail<6>(); // v, w
-        return x_red;
-    }
+    } 
 };
 
 // =========================================================================
@@ -226,6 +209,23 @@ public:
         A_out = J_real.block<13, 13>(0, 0).cast<Scalar>();
         B_out = J_real.block<13, 4>(0, 13).cast<Scalar>();
     }
+    
+    // =====================================================================
+    // REDUCE STATE
+    // =====================================================================
+    Vector12 reduceState(const Vector13& x_full) const {
+        Vector12 x_red;
+        x_red.head<3>() = x_full.head<3>(); // r
+        
+        Eigen::Vector4d q = x_full.segment<4>(3);
+        q.normalize();
+        
+        // q -> Rodrigues
+        x_red.segment<3>(3) = quatToRodrigues<Scalar>(q);
+        
+        x_red.tail<6>() = x_full.tail<6>(); // v, w
+        return x_red;
+    }
 };
 
 // =========================================================================
@@ -253,6 +253,41 @@ int main(int argc, char** argv) {
 
     ROS_INFO_STREAM("Linearization Complete. A(0,0): " << A(0,0));
     ROS_INFO_STREAM("B_z influence: " << B(9, 0));
+    
+    // --- Test qpOASES (basic hello world) ---
+    
+    // Matrix H (Hessian) - 1x1 matrix
+    qpOASES::real_t H[1 * 1] = { 1.0 };
+    
+    // Vector g (Gradient)
+    qpOASES::real_t g[1] = { 1.0 };
+    
+    // Lower and Upper Bounds
+    qpOASES::real_t lb[1] = { 1.0 };
+    qpOASES::real_t ub[1] = { 2.0 };
+
+    // 1. Create a QProblem object (1 variable, 0 constraints)
+    qpOASES::QProblem example(1, 0);
+
+    // 2. Set options (disable print to stdout to avoid clutter)
+    qpOASES::Options options;
+    options.printLevel = qpOASES::PL_NONE;
+    example.setOptions(options);
+
+    // 3. Solve the QP
+    int nWSR = 10;
+    qpOASES::returnValue status = example.init(H, g, nullptr, lb, ub, nullptr, nullptr, nWSR);
+
+    // 4. Check results using ROS Logging
+    if (status == qpOASES::SUCCESSFUL_RETURN) {
+        qpOASES::real_t xOpt[1];
+        example.getPrimalSolution(xOpt);
+        
+        ROS_INFO("SUCCESS: qpOASES is linked correctly!");
+        ROS_INFO("Solution x = %f (Expected: 1.0)", xOpt[0]);
+    } else {
+        ROS_ERROR("FAILURE: qpOASES init failed with status %d", status);
+    }
 
     // Keep node alive if needed
     // ros::spin(); 

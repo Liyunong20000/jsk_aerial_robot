@@ -9,22 +9,22 @@ lookahead_steps: 3        # Which step to send to JSK controller // NOT BEING US
 
 # --- Tuning Weights ---
 # Position (High penalty = tighter tracking)
-Q_pos_x: 20.0
-Q_pos_y: 20.0
-Q_pos_z: 30.0
+Q_pos_x: 100.0
+Q_pos_y: 100.0
+Q_pos_z: 100.0
 
 # Attitude (Medium penalty)
-Q_att_r: 5.0
-Q_att_p: 5.0
-Q_att_y: 5.0
+Q_att_r: 100.0
+Q_att_p: 100.0
+Q_att_y: 100.0
 
 # Velocity (Low penalty, allows smooth flow)
-Q_vel_x: 1.0
-Q_vel_y: 1.0
-Q_vel_z: 2.0
+Q_vel_x: 100.0 
+Q_vel_y: 100.0 
+Q_vel_z: 100.0 
 
 # Angular Rate (Damping)
-Q_omega: 0.1
+Q_omega: 100.0
 
 # Input Usage (Higher = save battery/smoother; Lower = aggressive)
-R_thrust: 1.0
+R_thrust: 0.1

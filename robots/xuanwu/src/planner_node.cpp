@@ -61,7 +61,8 @@ public:
     
     // Transform Inertia to Model Frame: J_model = R^T * J_robot * R
     Eigen::Matrix3d J_model = R_off_.transpose() * J_robot * R_off_;
-    quad_model_.setInertia(J_model);
+    //quad_model_.setInertia(J_model);
+    quad_model_.setInertia(J_robot);
 
     ROS_INFO_STREAM("Inertia Rotated to Model Frame:\n" << J_model);
 
