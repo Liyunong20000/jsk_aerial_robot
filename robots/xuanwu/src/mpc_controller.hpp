@@ -13,35 +13,53 @@
 #include "HardcodedMatrices.hpp"
 
 // =========================================================================
-// HELPER: Robust DARE Solver
+// HELPER: Robust Iterative DARE Solver
 // =========================================================================
-inline Eigen::MatrixXd solveDARE(const Eigen::MatrixXd& A, 
-                                 const Eigen::MatrixXd& B, 
-                                 const Eigen::MatrixXd& Q, 
-                                 const Eigen::MatrixXd& R, 
-                                 double tolerance = 1e-10, 
-                                 int max_iter = 50) 
+// Solves P = A'PA - A'PB(R + B'PB)^-1 B'PA + Q
+inline Eigen::MatrixXd solveDARE( const Eigen::MatrixXd& A, 
+                                  const Eigen::MatrixXd& B, 
+                                  const Eigen::MatrixXd& Q, 
+                                  const Eigen::MatrixXd& R, 
+                                  double tolerance = 1e-12, 
+                                  int max_iter = 1000) 
 {
-    Eigen::MatrixXd A_k = A;
-    Eigen::MatrixXd G_k = B * R.inverse() * B.transpose();
-    Eigen::MatrixXd H_k = Q;
-    Eigen::MatrixXd I = Eigen::MatrixXd::Identity(A.rows(), A.cols());
-
+    Eigen::MatrixXd P = Q; // Initialize with Terminal Cost = Stage Cost
+    Eigen::MatrixXd P_next = P;
+    
+    // Pre-compute transpose for speed
+    Eigen::MatrixXd At = A.transpose();
+    Eigen::MatrixXd Bt = B.transpose();
+    Eigen::MatrixXd R_inv; // Not needed explicitly, we use LLT or LU
+    
     for (int k = 0; k < max_iter; ++k) {
-        Eigen::MatrixXd W = (I + G_k * H_k).inverse();
-        Eigen::MatrixXd V = (I + H_k * G_k).inverse();
+        // K_gain = (R + B'PB)^-1 * B'PA
+        Eigen::MatrixXd R_total = R + Bt * P * B;
+        
+        // Solve (R + B'PB) * K = B'PA for K. 
+        // Using LDLT is robust for symmetric positive definite matrices
+        Eigen::MatrixXd BPA = Bt * P * A;
+        Eigen::MatrixXd K = R_total.ldlt().solve(BPA);
 
-        Eigen::MatrixXd A_next = A_k * W * A_k;
-        Eigen::MatrixXd G_next = G_k + A_k * W * G_k * A_k.transpose();
-        Eigen::MatrixXd H_next = H_k + A_k.transpose() * H_k * V * A_k;
+        // Riccati Update: P_next = A'PA - A'PB * K + Q
+        // (This form is numerically better than the standard one)
+        Eigen::MatrixXd APA = At * P * A;
+        P_next = APA - At * P * B * K + Q;
+        
+        // Enforce Symmetry (avoids numerical drift)
+        P_next = 0.5 * (P_next + P_next.transpose());
 
-        double diff = (H_next - H_k).norm();
-        A_k = A_next; G_k = G_next; H_k = H_next;
-
-        if (diff < tolerance) return H_k;
+        // Check convergence
+        double diff = (P_next - P).lpNorm<Eigen::Infinity>();
+        P = P_next;
+        
+        if (diff < tolerance) {
+            // std::cout << "[DARE] Converged in " << k << " iterations." << std::endl;
+            return P;
+        }
     }
-    std::cerr << "[MPC] Warning: DARE solver reached max iter!" << std::endl;
-    return H_k;
+    
+    std::cerr << "[MPC] Warning: DARE Iterative solver did not fully converge." << std::endl;
+    return P;
 }
 
 // =========================================================================
@@ -137,7 +155,8 @@ public:
         model_.linearize(x_hover, u_hover, config_.dt);
         
         // 2. Re-Compute Terminal Cost P
-        P_ = getHardcodedP(); //solveDARE(model_.getA(), model_.getB(), Q_, R_);
+        P_ = //getHardcodedP();
+              solveDARE(model_.getA(), model_.getB(), Q_, R_);
         
         // 3. Re-Construct QP Matrices
         constructQPMatrices();
@@ -146,7 +165,7 @@ public:
         initQProblem();
     }
 
-    bool solve(const Eigen::VectorXd& x0_error, Eigen::VectorXd& u_opt, Eigen::VectorXd& x_pred_first) {
+    bool solve(const Eigen::VectorXd& x0_error, Eigen::VectorXd& u_opt, std::vector<Eigen::VectorXd>& horizon_states) {
         if (!is_initialized_) return false;
 
         // Update Initial Condition Constraint (First block of Dynamics)
@@ -182,9 +201,22 @@ public:
 
         u_opt = Eigen::VectorXd::Zero(nu_);
         for(int i=0; i<nu_; ++i) u_opt(i) = primal_sol[i];
+        
+        // Extract Full Trajectory (for Vis or advanced logic)
+        horizon_states.clear();
+        horizon_states.reserve(config_.N);
 
-        x_pred_first = Eigen::VectorXd::Zero(nx_);
-        for(int i=0; i<nx_; ++i) x_pred_first(i) = primal_sol[nu_ + i];
+        int offset = 0;
+        for (int k = 0; k < config_.N; ++k) {
+            offset += nu_; // Skip u_k
+            
+            Eigen::VectorXd x_k(nx_);
+            for (int i = 0; i < nx_; ++i) x_k(i) = primal_sol[offset + i];
+            
+            horizon_states.push_back(x_k);
+            
+            offset += nx_; // Move to next step
+        }
 
         return true;
     }
@@ -229,71 +261,85 @@ private:
     }
 }
     void constructQPMatrices() {
-        //// --- 1. Hessian H (Same as before) ---
-        //H_data_.assign(n_vars_ * n_vars_, 0.0);
-        //auto setH = [&](int r, int c, const Eigen::MatrixXd& M) {
-        //    for(int i=0; i<M.rows(); ++i) 
-        //        for(int j=0; j<M.cols(); ++j) 
-        //            H_data_[(r+i)*n_vars_ + (c+j)] = M(i,j);
-        //};
-
-        //int off = 0;
-        //for(int k=0; k < config_.N; ++k) {
-        //    setH(off, off, R_); off += nu_;
-        //    if (k < config_.N - 1) setH(off, off, Q_); 
-        //    else setH(off, off, P_); 
-        //    off += nx_;
-        //}
+        //std::vector<qpOASES::real_t> A_cpp;
         
-        Eigen::MatrixXd H_eigen = JuliaSparse2Eigen::convert(B_rows, B_cols, B_vals, 320, 320);
-        eigenToFlat(H_eigen, H_data_);
+        // --- 1. Hessian H (Same as before) ---
+        H_data_.assign(n_vars_ * n_vars_, 0.0);
+        auto setH = [&](int r, int c, const Eigen::MatrixXd& M) {
+            for(int i=0; i<M.rows(); ++i) 
+                for(int j=0; j<M.cols(); ++j) 
+                    H_data_[(r+i)*n_vars_ + (c+j)] = M(i,j);
+        };
 
-        //// --- 2. Constraint Matrix A (Augmented) ---
-        //// Structure:
-        //// [ Dynamics Constraints (N * nx rows)    ]
-        //// [ Input Limit Constraints (N * nu rows) ]
+        int off = 0;
+        for(int k=0; k < config_.N; ++k) {
+            setH(off, off, R_); off += nu_;
+            if (k < config_.N - 1) setH(off, off, Q_); 
+            else setH(off, off, P_); 
+            off += nx_;
+        }
+        
+        //Eigen::MatrixXd H_eigen = JuliaSparse2Eigen::convert(B_rows, B_cols, B_vals, 320, 320);
+        //eigenToFlat(H_eigen, H_data_);
         //
-        //A_data_.assign(n_cons_ * n_vars_, 0.0);
-        //
-        //// Helpers
-        //Eigen::MatrixXd NegI = -Eigen::MatrixXd::Identity(nx_, nx_);
-        //Eigen::MatrixXd EyeNu = Eigen::MatrixXd::Identity(nu_, nu_);
-        //const Eigen::MatrixXd& A_sys = model_.getA();
-        //const Eigen::MatrixXd& B_sys = model_.getB();
+        ////Debug
+        //Eigen::Map<const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+        //  H_mapped(H_cpp.data(), n_vars_, n_vars_);
 
-        //auto setA = [&](int r_cons, int c_var, const Eigen::MatrixXd& M) {
-        //    for(int i=0; i<M.rows(); ++i)
-        //        for(int j=0; j<M.cols(); ++j)
-        //            A_data_[(r_cons)*n_vars_ + (c_var + j)] = M(i,j);
-        //};
+        //compareMatrices(H_eigen, H_mapped, "Julia_H", "Cpp_H_Data", 1e-12);
 
-        //// --- 2a. Fill Dynamics Part (Rows 0 to N*nx - 1) ---
-        //int row_dyn = 0;
-        //int col = 0;
-        //for(int k=0; k < config_.N; ++k) {
-        //    if (k > 0) setA(row_dyn, col - nx_, A_sys); // A*x_k
-        //    setA(row_dyn, col, B_sys);                  // B*u_k
-        //    col += nu_;
-        //    setA(row_dyn, col, NegI);                   // -I*x_{k+1}
-        //    col += nx_;
-        //    row_dyn += nx_; // Move to next dynamic constraint block
-        //}
+        // --- 2. Constraint Matrix A (Augmented) ---
+        // Structure:
+        // [ Dynamics Constraints (N * nx rows)    ]
+        // [ Input Limit Constraints (N * nu rows) ]
+        
+        A_data_.assign(n_cons_ * n_vars_, 0.0);
+        
+        // Helpers
+        Eigen::MatrixXd NegI = -Eigen::MatrixXd::Identity(nx_, nx_);
+        Eigen::MatrixXd EyeNu = Eigen::MatrixXd::Identity(nu_, nu_);
+        const Eigen::MatrixXd& A_sys = model_.getA();
+        const Eigen::MatrixXd& B_sys = model_.getB();
 
-        //// --- 2b. Fill Input Limits Part (Rows N*nx to End) ---
-        //int row_lim = config_.N * nx_; // Start after dynamics
-        //col = 0;
-        //for(int k=0; k < config_.N; ++k) {
-        //    // Place Identity matrix at the column corresponding to u_k
-        //    setA(row_lim, col, EyeNu);
-        //    
-        //    // Advance indices
-        //    col += nu_ + nx_; // Jump over u_k and x_{k+1} to next u_{k+1}
-        //    row_lim += nu_;   // Next block of input limits
-        //}
+        auto setA = [&](int r_cons, int c_var, const Eigen::MatrixXd& M) {
+            for(int i=0; i<M.rows(); ++i)
+                for(int j=0; j<M.cols(); ++j)
+                    A_data_[(r_cons + i)*n_vars_ + (c_var + j)] = M(i,j);
+        };
 
-        // 2. Construct A (Constraints) from Hardcoded D
-        Eigen::MatrixXd A_eigen = JuliaSparse2Eigen::convert(D_rows, D_cols, D_vals, 320, 320);
-        eigenToFlat(A_eigen, A_data_);
+        // --- 2a. Fill Dynamics Part (Rows 0 to N*nx - 1) ---
+        int row_dyn = 0;
+        int col = 0;
+        for(int k=0; k < config_.N; ++k) {
+            if (k > 0) setA(row_dyn, col - nx_, A_sys); // A*x_k
+            setA(row_dyn, col, B_sys);                  // B*u_k
+            col += nu_;
+            setA(row_dyn, col, NegI);                   // -I*x_{k+1}
+            col += nx_;
+            row_dyn += nx_; // Move to next dynamic constraint block
+        }
+
+        // --- 2b. Fill Input Limits Part (Rows N*nx to End) ---
+        int row_lim = config_.N * nx_; // Start after dynamics
+        col = 0;
+        for(int k=0; k < config_.N; ++k) {
+            // Place Identity matrix at the column corresponding to u_k
+            setA(row_lim, col, EyeNu);
+            
+            // Advance indices
+            col += nu_ + nx_; // Jump over u_k and x_{k+1} to next u_{k+1}
+            row_lim += nu_;   // Next block of input limits
+        }
+
+        //// 2. Construct A (Constraints) from Hardcoded D
+        //Eigen::MatrixXd A_eigen = JuliaSparse2Eigen::convert(D_rows, D_cols, D_vals, 320, 320);
+        //eigenToFlat(A_eigen, A_data_);
+
+        ////Debug
+        //Eigen::Map<const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+        //  A_mapped(A_cpp.data(), n_cons_, n_vars_);
+
+        //compareMatrices(A_eigen, A_mapped, "Julia_A", "Cpp_A_Data", 1e-12);
 
         // --- 3. Constraint Bounds (lbA, ubA) ---
         lbA_data_.assign(n_cons_, 0.0);

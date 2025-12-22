@@ -18,6 +18,12 @@
 #include "mpc_controller.hpp" // Includes MPC and LMPC classes
 #include "quat_helpers.hpp"
 
+// Headers RViz Publish
+#include <nav_msgs/Path.h>
+#include <geometry_msgs/PoseArray.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+
 // ============================= ROS façade ==================================
 class PlannerNode
 {
@@ -27,15 +33,23 @@ public:
     , has_state_(false)
   {
     // --- 1. Define Frame Transform (Robot -> Model) ---
-    // User specified: "rotate my frame [Model] 135 degres around x you got the frame of xuanwu [Robot]"
-    // This means R_off maps Model vectors to Robot vectors.
-    // v_robot = R_off * v_model  =>  v_model = R_off^T * v_robot
-    double angle_rad = 135.0 * M_PI / 180.0;
-    R_off_ = Eigen::AngleAxisd(angle_rad, Eigen::Vector3d::UnitX()).toRotationMatrix();
-    q_off_ = Eigen::Quaterniond(R_off_);
+    // User specified: "rotate Xuanwu's frame 135 degs clockwise (-135) to obtain my frame"
+    // FRAME Rotation: Robot -> Model is RotZ(-135 deg).
+    // VECTOR Transformation: v_model = R * v_robot
+    // The matrix that transforms a vector from Robot to Model is RotZ(+135 deg).
 
-    ROS_INFO("Frame Offset R_off (Model->Robot, X-axis 135 deg) initialized.");
+    double angle_deg = 135.0;
+    double angle_rad = angle_deg * M_PI / 180.0;
 
+    // R_robot2model: Transforms a vector expressed in Robot Frame to Model Frame
+    R_robot2model_ = Eigen::AngleAxisd(angle_rad, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+
+    // q_model2robot: Represents rotation from Model Frame back to Robot Frame (for orientation chaining)
+    // Frame Model is -135 deg from Robot.
+    double frame_angle_rad = -135.0 * M_PI / 180.0;
+    q_model2robot_ = Eigen::Quaterniond(Eigen::AngleAxisd(frame_angle_rad, Eigen::Vector3d::UnitZ()));
+
+    ROS_INFO("Frame Transform Initialized: Robot -> Model (Z-axis, Vector Rot +135 deg)");
     // --- Load Parameters ---
     loadParameters();
 
@@ -59,10 +73,11 @@ public:
     J_robot(1,1) = 0.01345117632; // Iyy
     J_robot(2,2) = 0.01544169758; // Izz
     
-    // Transform Inertia to Model Frame: J_model = R^T * J_robot * R
-    Eigen::Matrix3d J_model = R_off_.transpose() * J_robot * R_off_;
-    //quad_model_.setInertia(J_model);
-    quad_model_.setInertia(J_robot);
+    // Transform Inertia to Model Frame: J_model = R * J_robot * R^T
+    // Where R transforms vectors from Robot to Model
+    Eigen::Matrix3d J_model = R_robot2model_ * J_robot * R_robot2model_.transpose();
+    
+    quad_model_.setInertia(J_model);
 
     ROS_INFO_STREAM("Inertia Rotated to Model Frame:\n" << J_model);
 
@@ -97,6 +112,8 @@ private:
   ros::Subscriber state_sub_;
   ros::Publisher  cmd_pub_;
   ros::Publisher  debug_pub_;
+  ros::Publisher mpc_path_pub_ = nh_.advertise<nav_msgs::Path>("mpc_prediction_path", 1);
+  ros::Publisher mpc_poses_pub_ = nh_.advertise<geometry_msgs::PoseArray>("mpc_prediction_poses", 1);
   ros::Timer      control_timer_;
 
   std::string state_topic_;
@@ -115,8 +132,8 @@ private:
   std::mutex state_mutex_;
 
   // --- Frame Transforms ---
-  Eigen::Matrix3d R_off_;
-  Eigen::Quaterniond q_off_;
+  Eigen::Matrix3d R_robot2model_; // Matrix: Multiplies v_robot to get v_model
+  Eigen::Quaterniond q_model2robot_; // Quat: Represents rotation of Model W.R.T
 
   // --- Controller Architecture ---
   LinearQuadrotorModel quad_model_;
@@ -148,27 +165,26 @@ private:
     current_state_model_(0) = msg->pose.pose.position.x;
     current_state_model_(1) = msg->pose.pose.position.y;
     current_state_model_(2) = msg->pose.pose.position.z;
-    
+   
     // Orientation (World Frame)
-    // q_robot maps Robot->World. We need q_model maps Model->World.
-    // Relation: Robot = R_off * Model
-    // R_robot_world = R_model_world * R_off_transpose (if R maps Body to World?)
-    // Standard: R_world_robot = R_world_model * R_model_robot
-    // q_robot = q_model * q_off
-    // => q_model = q_robot * q_off.inverse()
-    Eigen::Quaterniond q_robot(
+    // We have q_robot_world (Robot -> World).
+    // We want q_model_world (Model -> World).
+    // Relationship: q_model_world = q_robot_world * q_model_robot
+    Eigen::Quaterniond q_robot_world(
         msg->pose.pose.orientation.w,
         msg->pose.pose.orientation.x,
         msg->pose.pose.orientation.y,
         msg->pose.pose.orientation.z
     );
-    Eigen::Quaterniond q_model = q_robot * q_off_.conjugate();
     
-    current_state_model_(3) = q_model.w();
-    current_state_model_(4) = q_model.x();
-    current_state_model_(5) = q_model.y();
-    current_state_model_(6) = q_model.z();
+    // Apply offset to get orientation of Model in World
+    Eigen::Quaterniond q_model_world = q_robot_world * q_model2robot_;
     
+    current_state_model_(3) = q_model_world.w();
+    current_state_model_(4) = q_model_world.x();
+    current_state_model_(5) = q_model_world.y();
+    current_state_model_(6) = q_model_world.z();
+
     // Linear Velocity (Body Frame)
     // v_model = R_off^T * v_robot
     Eigen::Vector3d v_robot(
@@ -176,8 +192,10 @@ private:
         msg->twist.twist.linear.y,
         msg->twist.twist.linear.z
     );
-    Eigen::Vector3d v_model = R_off_.transpose() * v_robot;
-    
+   
+    // Transform vector: v_model = R_robot2model * v_robot
+    Eigen::Vector3d v_model = R_robot2model_ * v_robot;
+
     current_state_model_(7) = v_model.x();
     current_state_model_(8) = v_model.y();
     current_state_model_(9) = v_model.z();
@@ -188,7 +206,7 @@ private:
         msg->twist.twist.angular.y,
         msg->twist.twist.angular.z
     );
-    Eigen::Vector3d w_model = R_off_.transpose() * w_robot;
+    Eigen::Vector3d w_model = R_robot2model_ * w_robot;
 
     current_state_model_(10) = w_model.x();
     current_state_model_(11) = w_model.y();
@@ -232,43 +250,59 @@ private:
     // --- MPC Solve (In Model Frame) ---
     auto [x_hover, u_hover] = quad_model_.findHoverConditions();
 
+    // Set point for debug
+    x_hover.head<3>() = Eigen::Vector3d(1.0, 1.0, 1.0);
+    auto zero = Eigen::Vector3d(0.0, 0.0, 0.0);
+
     // 1. Position Error
-    Eigen::Vector3d dr = x_current_model.head<3>() - x_hover.head<3>();
+    Eigen::Vector3d dr = x_hover.head<3>() - x_current_model.head<3>();
     
     // 2. Attitude Error (Quaternion Manifold)
     Eigen::Vector4d q_hover = x_hover.segment<4>(3);
     Eigen::Vector4d q_curr  = x_current_model.segment<4>(3);
-    Eigen::Vector3d dtheta  = quatErrorRodrigues(q_hover, q_curr);
+    Eigen::Vector3d dtheta  = quatErrorRodrigues(q_curr, q_hover);
+     
+    //Eigen::Vector3d dtheta  = zero;
 
     // 3. Velocity Error
-    Eigen::Vector3d dv = x_current_model.segment<3>(7) - x_hover.segment<3>(7);
+    Eigen::Vector3d dv = x_hover.segment<3>(7) - x_current_model.segment<3>(7);
     
     // 4. Omega Error
-    Eigen::Vector3d dw = x_current_model.tail<3>() - x_hover.tail<3>();
+    Eigen::Vector3d dw = x_hover.tail<3>() - x_current_model.tail<3>();
+    //Eigen::Vector3d dw = zero;//x_current_model.tail<3>() - x_hover.tail<3>();
 
     Eigen::VectorXd x0_error(12);
     x0_error << dr, dtheta, dv, dw;
 
     Eigen::VectorXd u_opt_delta;
-    Eigen::VectorXd x_pred_first;
+    std::vector<Eigen::VectorXd> prediction_horizon;
     
-    bool success = mpc_controller_->solve(x0_error, u_opt_delta, x_pred_first);
+    bool success = mpc_controller_->solve(x0_error, u_opt_delta, prediction_horizon);
 
     if (!success) {
         ROS_WARN_THROTTLE(1.0, "[Planner] MPC Solver Failed/Infeasible!");
         return;
+    } else {
+      auto trajectory_copy = prediction_horizon;
+      for (auto& x : trajectory_copy) {
+        x += x_hover; // Add reference to visualize absolute position
+      }
+      publishMPCTrajectory(mpc_path_pub_, mpc_poses_pub_, trajectory_copy, "world");
     }
 
     // --- Output Conversion ---
     // Target Position
-    Eigen::Vector3d r_cmd = x_hover.head<3>() + x_pred_first.head<3>();
+    Eigen::Vector3d r_cmd = x_hover.head<3>() + prediction_horizon[0].head<3>();
     
     // Target Velocity (Model Body Frame)
-    Eigen::Vector3d v_body_model = x_hover.segment<3>(7) + x_pred_first.segment<3>(6);
+    Eigen::Vector3d v_body_model = x_hover.segment<3>(7) + prediction_horizon[0].segment<3>(6);
     
     // Convert to World Frame Velocity for JSK Controller
-    // v_world = q_model * v_body_model
-    Eigen::Quaterniond q_model_now(q_curr(0), q_curr(1), q_curr(2), q_curr(3));
+    // Since MPC runs in Model Frame, it outputs velocities in Model Body Frame.
+    // To get World Velocity: v_world = q_model_world * v_body_model
+    Eigen::Quaterniond q_model_now(
+      x_current_model(3), x_current_model(4), x_current_model(5), x_current_model(6)
+    );
     Eigen::Vector3d v_world = q_model_now * v_body_model;
 
     // --- Publish ---
@@ -290,8 +324,11 @@ private:
     cmd_msg.target_vel_y = v_world.y();
     cmd_msg.target_vel_z = v_world.z();
     
+    // Macgyver, TODO: Fix later!!
     // Target Yaw (World Frame). For regulation to origin, 0.0 is fine.
-    cmd_msg.target_yaw = 0.0; 
+    double offset_rad = 135.0 * M_PI / 180.0;
+    double mpc_target_yaw = 0.0; // Or extract from prediction_horizon[0] if doing yaw control
+    cmd_msg.target_yaw = mpc_target_yaw + offset_rad;
 
     cmd_pub_.publish(cmd_msg);
 
@@ -303,6 +340,43 @@ private:
     debug_msg.pose.position.z = r_cmd.z();
     debug_msg.pose.orientation.w = 1.0; // Identity orientation for viz
     debug_pub_.publish(debug_msg);
+  }
+
+  void publishMPCTrajectory(ros::Publisher& path_pub, 
+                            ros::Publisher& pose_pub, 
+                            const std::vector<Eigen::VectorXd>& horizon,
+                            const std::string& frame_id = "world") 
+  {
+      if (horizon.empty()) return;
+  
+      nav_msgs::Path path_msg;
+      geometry_msgs::PoseArray poses_msg;
+  
+      path_msg.header.stamp = ros::Time::now();
+      path_msg.header.frame_id = frame_id;
+      poses_msg.header = path_msg.header;
+  
+      for (const auto& x : horizon) {
+          geometry_msgs::PoseStamped pose_s;
+          
+          // --- 1. Position (Indices 0, 1, 2) ---
+          pose_s.pose.position.x = x(0);
+          pose_s.pose.position.y = x(1);
+          pose_s.pose.position.z = x(2);
+  
+          // --- 2. Orientation (Indices 6, 7, 8 -> Roll, Pitch, Yaw) ---
+          // Assuming your state vector has Euler angles at 6,7,8
+          tf2::Quaternion q;
+          q.setRPY(x(6), x(7), x(8));
+          pose_s.pose.orientation = tf2::toMsg(q);
+  
+          // Add to messages
+          path_msg.poses.push_back(pose_s);
+          poses_msg.poses.push_back(pose_s.pose);
+      }
+  
+      path_pub.publish(path_msg);
+      pose_pub.publish(poses_msg);
   }
 };
 

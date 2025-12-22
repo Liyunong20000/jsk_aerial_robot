@@ -1,5 +1,6 @@
 # MPC Planner Configuration
-state_topic: "/xuanwu/eskf/odom"
+#state_topic: "/xuanwu/eskf/odom"
+state_topic: "/xuanwu/uav/baselink/odom"
 cmd_topic:   "/xuanwu/uav/nav"
 
 # Control Loop

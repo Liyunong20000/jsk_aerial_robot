@@ -8,6 +8,8 @@
 #include <Eigen/Dense>
 #include <qpOASES.hpp>
 
+#include <iomanip> // For setprecision
+
 /**
  * Dumps a flattened std::vector (qpOASES raw data) to a text file.
  * Useful for inspecting H, A, g, lb, ub, etc.
@@ -58,4 +60,67 @@ inline void dumpEigenData(const std::string& filename,
     file << mat.format(CleanFmt);
     file.close();
     std::cout << "[Debug] Saved Eigen data to: " << filename << std::endl;
+}
+
+/**
+ * Compares two Eigen matrices and reports specific element mismatches.
+ * * @param A First matrix (e.g., "Correct Julia Matrix")
+ * @param B Second matrix (e.g., "My C++ Matrix")
+ * @param nameA Label for first matrix
+ * @param nameB Label for second matrix
+ * @param tolerance Threshold for considering two numbers different
+ * @param max_print Maximum number of specific errors to print before silencing
+ */
+void compareMatrices(const Eigen::MatrixXd& A, 
+                     const Eigen::MatrixXd& B, 
+                     std::string nameA = "MatA", 
+                     std::string nameB = "MatB", 
+                     double tolerance = 1e-5,
+                     int max_print = 20) 
+{
+    // 1. Check Dimensions
+    if (A.rows() != B.rows() || A.cols() != B.cols()) {
+        std::cerr << "[ERROR] Dimension Mismatch!\n"
+                  << "  " << nameA << ": " << A.rows() << "x" << A.cols() << "\n"
+                  << "  " << nameB << ": " << B.rows() << "x" << B.cols() << "\n";
+        return;
+    }
+
+    std::cout << "\n>>> COMPARING " << nameA << " vs " << nameB << " <<<\n";
+    std::cout << "    (Tolerance: " << tolerance << ")\n";
+
+    int mismatch_count = 0;
+    
+    // 2. Iterate and Compare
+    for (int i = 0; i < A.rows(); ++i) {
+        for (int j = 0; j < A.cols(); ++j) {
+            double valA = A(i, j);
+            double valB = B(i, j);
+            double diff = std::abs(valA - valB);
+
+            if (diff > tolerance) {
+                mismatch_count++;
+                
+                if (mismatch_count <= max_print) {
+                    std::cout << std::setprecision(8) << std::scientific;
+                    std::cout << "[MISMATCH] At (" << i << ", " << j << "):\n"
+                              << "    " << nameA << ": " << valA << "\n"
+                              << "    " << nameB << ": " << valB << "\n"
+                              << "    Diff: " << diff << "\n"
+                              << "-----------------------------\n";
+                }
+            }
+        }
+    }
+
+    // 3. Final Summary
+    if (mismatch_count == 0) {
+        std::cout << ">>> SUCCESS: Matrices are identical (within tolerance).\n\n";
+    } else {
+        std::cout << ">>> FAILURE: Found " << mismatch_count << " total mismatches.\n";
+        if (mismatch_count > max_print) {
+            std::cout << "    (First " << max_print << " errors shown above)\n";
+        }
+        std::cout << "\n";
+    }
 }
