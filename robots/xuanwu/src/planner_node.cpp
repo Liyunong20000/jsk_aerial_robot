@@ -32,24 +32,6 @@ public:
     : nh_(nh)
     , has_state_(false)
   {
-    // --- 1. Define Frame Transform (Robot -> Model) ---
-    // User specified: "rotate Xuanwu's frame 135 degs clockwise (-135) to obtain my frame"
-    // FRAME Rotation: Robot -> Model is RotZ(-135 deg).
-    // VECTOR Transformation: v_model = R * v_robot
-    // The matrix that transforms a vector from Robot to Model is RotZ(+135 deg).
-
-    double angle_deg = 135.0;
-    double angle_rad = angle_deg * M_PI / 180.0;
-
-    // R_robot2model: Transforms a vector expressed in Robot Frame to Model Frame
-    R_robot2model_ = Eigen::AngleAxisd(angle_rad, Eigen::Vector3d::UnitZ()).toRotationMatrix();
-
-    // q_model2robot: Represents rotation from Model Frame back to Robot Frame (for orientation chaining)
-    // Frame Model is -135 deg from Robot.
-    double frame_angle_rad = -135.0 * M_PI / 180.0;
-    q_model2robot_ = Eigen::Quaterniond(Eigen::AngleAxisd(frame_angle_rad, Eigen::Vector3d::UnitZ()));
-
-    ROS_INFO("Frame Transform Initialized: Robot -> Model (Z-axis, Vector Rot +135 deg)");
     // --- Load Parameters ---
     loadParameters();
 
@@ -73,13 +55,7 @@ public:
     J_robot(1,1) = 0.01345117632; // Iyy
     J_robot(2,2) = 0.01544169758; // Izz
     
-    // Transform Inertia to Model Frame: J_model = R * J_robot * R^T
-    // Where R transforms vectors from Robot to Model
-    Eigen::Matrix3d J_model = R_robot2model_ * J_robot * R_robot2model_.transpose();
-    
-    quad_model_.setInertia(J_model);
-
-    ROS_INFO_STREAM("Inertia Rotated to Model Frame:\n" << J_model);
+    quad_model_.setInertia(J_robot);
 
     // 4. Initialize MPC Controller Config
     MPC::Config mpc_cfg;
@@ -161,56 +137,26 @@ private:
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     
-    // Position (World Frame - Assumed Shared Origin)
+    // 1. Position (World Frame) - No change
     current_state_model_(0) = msg->pose.pose.position.x;
     current_state_model_(1) = msg->pose.pose.position.y;
     current_state_model_(2) = msg->pose.pose.position.z;
-   
-    // Orientation (World Frame)
-    // We have q_robot_world (Robot -> World).
-    // We want q_model_world (Model -> World).
-    // Relationship: q_model_world = q_robot_world * q_model_robot
-    Eigen::Quaterniond q_robot_world(
-        msg->pose.pose.orientation.w,
-        msg->pose.pose.orientation.x,
-        msg->pose.pose.orientation.y,
-        msg->pose.pose.orientation.z
-    );
-    
-    // Apply offset to get orientation of Model in World
-    Eigen::Quaterniond q_model_world = q_robot_world * q_model2robot_;
-    
-    current_state_model_(3) = q_model_world.w();
-    current_state_model_(4) = q_model_world.x();
-    current_state_model_(5) = q_model_world.y();
-    current_state_model_(6) = q_model_world.z();
+ 
+    // 2. Orientation (World Frame) - DIRECT COPY (No offset)
+    current_state_model_(3) = msg->pose.pose.orientation.w;
+    current_state_model_(4) = msg->pose.pose.orientation.x;
+    current_state_model_(5) = msg->pose.pose.orientation.y;
+    current_state_model_(6) = msg->pose.pose.orientation.z;
 
-    // Linear Velocity (Body Frame)
-    // v_model = R_off^T * v_robot
-    Eigen::Vector3d v_robot(
-        msg->twist.twist.linear.x,
-        msg->twist.twist.linear.y,
-        msg->twist.twist.linear.z
-    );
-   
-    // Transform vector: v_model = R_robot2model * v_robot
-    Eigen::Vector3d v_model = R_robot2model_ * v_robot;
-
-    current_state_model_(7) = v_model.x();
-    current_state_model_(8) = v_model.y();
-    current_state_model_(9) = v_model.z();
+    // 3. Linear Velocity (Body Frame) - DIRECT COPY (No Rotation matrix)
+    current_state_model_(7) = msg->twist.twist.linear.x;
+    current_state_model_(8) = msg->twist.twist.linear.y;
+    current_state_model_(9) = msg->twist.twist.linear.z;
     
-    // Angular Velocity (Body Frame)
-    Eigen::Vector3d w_robot(
-        msg->twist.twist.angular.x,
-        msg->twist.twist.angular.y,
-        msg->twist.twist.angular.z
-    );
-    Eigen::Vector3d w_model = R_robot2model_ * w_robot;
-
-    current_state_model_(10) = w_model.x();
-    current_state_model_(11) = w_model.y();
-    current_state_model_(12) = w_model.z();
+    // 4. Angular Velocity (Body Frame) - DIRECT COPY
+    current_state_model_(10) = msg->twist.twist.angular.x;
+    current_state_model_(11) = msg->twist.twist.angular.y;
+    current_state_model_(12) = msg->twist.twist.angular.z;
 
     has_state_ = true;
   }
@@ -261,15 +207,14 @@ private:
     Eigen::Vector4d q_hover = x_hover.segment<4>(3);
     Eigen::Vector4d q_curr  = x_current_model.segment<4>(3);
     Eigen::Vector3d dtheta  = quatErrorRodrigues(q_curr, q_hover);
-     
-    //Eigen::Vector3d dtheta  = zero;
 
     // 3. Velocity Error
     Eigen::Vector3d dv = x_hover.segment<3>(7) - x_current_model.segment<3>(7);
+    //Eigen::Vector3d dv = zero
     
     // 4. Omega Error
     Eigen::Vector3d dw = x_hover.tail<3>() - x_current_model.tail<3>();
-    //Eigen::Vector3d dw = zero;//x_current_model.tail<3>() - x_hover.tail<3>();
+    //Eigen::Vector3d dw = zero;
 
     Eigen::VectorXd x0_error(12);
     x0_error << dr, dtheta, dv, dw;
@@ -296,7 +241,7 @@ private:
     
     // Target Velocity (Model Body Frame)
     Eigen::Vector3d v_body_model = x_hover.segment<3>(7) + prediction_horizon[0].segment<3>(6);
-    
+   
     // Convert to World Frame Velocity for JSK Controller
     // Since MPC runs in Model Frame, it outputs velocities in Model Body Frame.
     // To get World Velocity: v_world = q_model_world * v_body_model
@@ -324,11 +269,8 @@ private:
     cmd_msg.target_vel_y = v_world.y();
     cmd_msg.target_vel_z = v_world.z();
     
-    // Macgyver, TODO: Fix later!!
     // Target Yaw (World Frame). For regulation to origin, 0.0 is fine.
-    double offset_rad = 135.0 * M_PI / 180.0;
-    double mpc_target_yaw = 0.0; // Or extract from prediction_horizon[0] if doing yaw control
-    cmd_msg.target_yaw = mpc_target_yaw + offset_rad;
+    cmd_msg.target_yaw = 0.0;
 
     cmd_pub_.publish(cmd_msg);
 

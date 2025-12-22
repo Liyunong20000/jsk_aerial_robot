@@ -144,11 +144,28 @@ public:
         // 6. Angular Velocity Dynamics
         T l_val = T(l_);
         T ratio = T(force_torque_ratio_);// / T(thrust_limit_);
+        
+        // --- STANDARD TORQUE (Raw Geometry) ---
+        // Assumes standard alignment (e.g., Motors 0,2 on Axis A; 1,3 on Axis B)
+        Vector3T tau_std;
+        tau_std(0) = l_val * (u(1) - u(3));
+        tau_std(1) = l_val * (u(2) - u(0)); 
+        tau_std(2) = ratio * (u(0) - u(1) + u(2) - u(3));
+
+        // --- FRAME ROTATION FIX ---
+        // User requested: "rotates 135 degrees counterclockwise"
+        // If the Body Frame rotates +135 deg (CCW), the vector coordinates of the 
+        // physical motor torques must rotate -135 deg (CW) to match the new axes.
+        
+        T angle_rad = T(-135.0 * M_PI / 180.0); // -135 deg for coordinate transform
+        T c = cos(angle_rad);
+        T s = sin(angle_rad);
 
         Vector3T tau;
-        tau(0) = l_val * (u(1) - u(3));
-        tau(1) = l_val * (u(2) - u(0)); 
-        tau(2) = ratio * (u(0) - u(1) + u(2) - u(3));
+        // Rotation Rz(angle) applied to the standard torque vector
+        tau(0) = c * tau_std(0) - s * tau_std(1);
+        tau(1) = s * tau_std(0) + c * tau_std(1);
+        tau(2) = tau_std(2); // Z-torque is invariant to Z-rotation
 
         Vector3T w_cross_Jw = w.cross(J_.cast<T>() * w);
         Vector3T w_dot = J_inv_.cast<T>() * (tau - w_cross_Jw);
