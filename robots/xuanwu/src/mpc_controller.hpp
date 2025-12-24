@@ -143,7 +143,8 @@ public:
         // JULIA LOGIC: Constraints include Dynamics AND Input Bounds
         // Rows 0 to N*nx-1       -> Dynamics equality
         // Rows N*nx to N*nx+N*nu -> Input box inequality
-        n_cons_ = (config_.N * nx_) + (config_.N * nu_); 
+        // Rows N*nx+N*nu+1 to N*nx+N*nu+N -> Not hit the ground constraint
+        n_cons_ = (config_.N * nx_) + (config_.N * nu_) + config_.N; 
 
         setupSolver();
         reset();
@@ -176,7 +177,7 @@ public:
         for(int i=0; i<nx_; ++i) {
             lbA_data_[i] = b_eq_first(i);
             ubA_data_[i] = b_eq_first(i);
-        }
+        } 
 
         int nWSR = 1000;
         
@@ -189,7 +190,7 @@ public:
         );
 
         if (status != qpOASES::SUCCESSFUL_RETURN) {
-            solver_->init(H_data_.data(), g_data_.data(), A_data_.data(),
+            status = solver_->init(H_data_.data(), g_data_.data(), A_data_.data(),
                           nullptr, nullptr, // No Simple Bounds
                           lbA_data_.data(), ubA_data_.data(), nWSR);
              if (status != qpOASES::SUCCESSFUL_RETURN) return false;
@@ -215,9 +216,11 @@ public:
             
             horizon_states.push_back(x_k);
             
+            printf("%.3f ", x_k(2));
+             
             offset += nx_; // Move to next step
         }
-
+        std::cout << std::endl; // End print line
         return true;
     }
 
@@ -364,6 +367,28 @@ private:
                 ubA_data_[limit_idx + i] = u_ub(i);
             }
             limit_idx += nu_;
+        }
+        // 3c. Not hit the ground constraint
+        int row_gnd = (config_.N * nx_) + (config_.N * nu_); // Start Index
+        col = 0;
+
+        for(int k=0; k < config_.N; ++k) {
+            // Calculate index of Z component in state vector x_{k+1}
+            // Current 'col' points to start of u_k. 
+            // x_{k+1} starts at 'col + nu_'.
+            // z is the 3rd element (index 2) of x_{k+1}.
+            int z_global_idx = col + nu_ + 2;
+
+            // Update A Matrix: Select z
+            A_data_[row_gnd * n_vars_ + z_global_idx] = 1.0;
+
+            // Update Bounds: [min_err, Infinity]
+            lbA_data_[row_gnd] = -qpOASES::INFTY;
+            ubA_data_[row_gnd] = 0.05;//qpOASES::INFTY;
+
+            // Advance Pointers
+            col += nu_ + nx_; // Move to variables of next step
+            row_gnd++;        // Move to next constraint row
         }
 
         // --- 4. Gradient g (Zero) ---

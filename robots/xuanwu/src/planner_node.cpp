@@ -2,6 +2,8 @@
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <aerial_robot_msgs/FlightNav.h> // JSK Standard
+#include <std_msgs/Empty.h> // For Halt
+#include <std_msgs/Bool.h>  // For Trigger
 
 #include <dynamic_reconfigure/server.h>
 #include <xuanwu/PlannerConfig.h> // Ensure this .cfg is generated
@@ -35,6 +37,7 @@ public:
   explicit PlannerNode(ros::NodeHandle& nh)
     : nh_(nh)
     , has_state_(false)
+    , landing_active_(false) // DEFAULT: Inactive (Waiting for activation)
     , tf_listener_(tf_buffer_)
   {
     // --- Load Parameters ---
@@ -74,6 +77,9 @@ public:
     state_sub_ = nh_.subscribe(state_topic_, 1, &PlannerNode::stateCallback, this);
     cmd_pub_   = nh_.advertise<aerial_robot_msgs::FlightNav>(cmd_topic_, 1);
     debug_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("/xuanwu/debug/mpc_setpoint", 1);
+    
+    halt_pub_    = nh_.advertise<std_msgs::Empty>("/xuanwu/teleop_command/halt", 1);
+    trigger_sub_ = nh_.subscribe("start_landing", 1, &PlannerNode::triggerCallback, this);
 
     // --- Dynamic Reconfigure ---
     dr_callback_ = boost::bind(&PlannerNode::reconfigureCallback, this, _1, _2);
@@ -91,8 +97,10 @@ private:
 
   // --- ROS Members ---
   ros::Subscriber state_sub_;
+  ros::Subscriber trigger_sub_;
   ros::Publisher  cmd_pub_;
   ros::Publisher  debug_pub_;
+  ros::Publisher  halt_pub_;
   ros::Publisher mpc_path_pub_ = nh_.advertise<nav_msgs::Path>("mpc_prediction_path", 1);
   ros::Publisher mpc_poses_pub_ = nh_.advertise<geometry_msgs::PoseArray>("mpc_prediction_poses", 1);
   ros::Timer      control_timer_;
@@ -115,6 +123,7 @@ private:
   Eigen::Matrix<double, 13, 1> current_state_model_;
   bool has_state_;
   std::mutex state_mutex_;
+  bool landing_active_;
 
   // --- Frame Transforms ---
   Eigen::Matrix3d R_robot2model_; // Matrix: Multiplies v_robot to get v_model
@@ -128,6 +137,16 @@ private:
   dynamic_reconfigure::Server<xuanwu::PlannerConfig> dr_server_;
   dynamic_reconfigure::Server<xuanwu::PlannerConfig>::CallbackType dr_callback_;
 
+  // Low Pass Filter Config
+    double lpf_alpha_ = 0.1; // Factor 0.0 to 1.0.
+                             // 1.0 = No filter (Raw). 0.1 = Very Smooth (High Lag).
+                             // Start with 0.1 or 0.2.
+
+    // Filter State
+    bool filter_initialized_ = false;
+    Eigen::Vector3d t_tag_smooth_;
+    double yaw_tag_smooth_ = 0.0;
+
   // ----------------------- Initialization ---------------------------
   void loadParameters()
   {
@@ -140,6 +159,16 @@ private:
   }
 
   // ----------------------- Callbacks ---------------------------
+  
+  void triggerCallback(const std_msgs::BoolConstPtr& msg) {
+      if (msg->data) {
+          landing_active_ = true;
+          ROS_WARN(">> LANDING SEQUENCE ACTIVATED (C++ MPC Taking Control) <<");
+      } else {
+          landing_active_ = false;
+          ROS_INFO(">> Landing Sequence Deactivated.");
+      }
+  }
 
   // 1. Read State & Convert to Model Frame
   void stateCallback(const nav_msgs::OdometryConstPtr& msg)
@@ -194,205 +223,219 @@ private:
   // 3. Main Control Loop
   void controlLoop(const ros::TimerEvent& event)
   {
-    if (!mpc_controller_ || !has_state_) return;
-    
-    // 1. Get Dynamic Setpoint from "land_mark" TF ---
-    geometry_msgs::TransformStamped transform;
+    if (!mpc_controller_ || !has_state_ || !landing_active_) return;
+
+    // --- 1. Get Raw Transform ---
+    geometry_msgs::TransformStamped tf_msg;
     try {
-        // Lookup transform from world to land_mark
-        transform = tf_buffer_.lookupTransform("world", "land_mark", ros::Time(0));
+        tf_msg = tf_buffer_.lookupTransform("world", "land_mark", ros::Time(0));
     } catch (tf2::TransformException &ex) {
-        ROS_WARN_THROTTLE(1.0, "[Planner] Waiting for 'land_mark' frame... (%s)", ex.what());
-        return; // Skip this control cycle if tag is not visible
-    }
-    
-    // Extract Yaw from the landmark (we ignore Roll/Pitch for the reference)
-    tf2::Quaternion q_tf;
-    tf2::fromMsg(transform.transform.rotation, q_tf);
-    double roll_ref, pitch_ref, yaw_ref;
-    tf2::Matrix3x3(q_tf).getRPY(roll_ref, pitch_ref, yaw_ref);
-
-    // Construct the Reference State (x_ref)
-    // 13-dim: [px, py, pz | qw, qx, qy, qz | vx, vy, vz | wx, wy, wz ]
-    Eigen::Matrix<double, 13, 1> x_ref;
-    x_ref.setZero();
-
-    // Position: Landmark position + Z offset
-    x_ref(0) = transform.transform.translation.x;
-    x_ref(1) = transform.transform.translation.y;
-    double z_offset = 1.0; // Adjust this offset distance (meters)
-    x_ref(2) = transform.transform.translation.z + z_offset;
-
-    // Orientation: Flat (Roll=0, Pitch=0) but aligned with Landmark Yaw
-    tf2::Quaternion q_ref;
-    q_ref.setRPY(0.0, 0.0, yaw_ref);
-    x_ref(3) = q_ref.w();
-    x_ref(4) = q_ref.x();
-    x_ref(5) = q_ref.y();
-    x_ref(6) = q_ref.z();
-    
-    // Velocity & Omega: Zero (we want to hover relative to the tag)
-    // x_ref.tail<6>().setZero(); // Already zero from initialization
-
-    // --- Get Current State ---
-
-    Eigen::Matrix<double, 13, 1> x_current_model;
-    {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        x_current_model = current_state_model_;
+        ROS_WARN_THROTTLE(1.0, "[Planner] Waiting for 'land_mark'...");
+        filter_initialized_ = false; // Reset filter if we lose tracking!
+        return;
     }
 
-    // --- MPC Solve ---
+    // Convert Raw Translation
+    Eigen::Vector3d t_raw(tf_msg.transform.translation.x,
+                          tf_msg.transform.translation.y,
+                          tf_msg.transform.translation.z + 0.25);
 
-    // 1. Position Error
-    // We must rotate the World-Frame position error into the frame aligned with the robot's current Yaw.
-    // Otherwise, the MPC (linearized at Yaw=0) will mix up X and Y axes when the robot turns.
-    
-    // Get current Yaw of the robot
-    tf2::Quaternion q_curr_tf(x_current_model(4), x_current_model(5), x_current_model(6), x_current_model(3)); // x,y,z,w
-    double r_curr, p_curr, y_curr;
-    tf2::Matrix3x3(q_curr_tf).getRPY(r_curr, p_curr, y_curr);
+    // Convert Raw Orientation -> Extract Yaw
+    tf2::Quaternion q_raw_tf;
+    tf2::fromMsg(tf_msg.transform.rotation, q_raw_tf);
+    double r_raw, p_raw, y_raw;
+    tf2::Matrix3x3(q_raw_tf).getRPY(r_raw, p_raw, y_raw);
 
-    //// Calculate Raw World Error
-    //Eigen::Vector3d dr_world = x_ref.head<3>() - x_current_model.head<3>();
+    // --- 2. Apply Low Pass Filter ---
+    if (!filter_initialized_) {
+        // First run: Initialize directly with raw values to prevent "jump" from 0
+        t_tag_smooth_   = t_raw;
+        yaw_tag_smooth_ = y_raw;
+        filter_initialized_ = true;
+    } else {
+        // Position Filter: y_new = (1-alpha)*y_old + alpha*x_new
+        t_tag_smooth_ = (1.0 - lpf_alpha_) * t_tag_smooth_ + lpf_alpha_ * t_raw;
 
-    //// Create 2D Rotation Matrix for Yaw (Active Rotation)
-    //// We want to project the error vector INTO the body-aligned frame, so we use Inverse Rotation (-Yaw)
-    //double cy = cos(y_curr);
-    //double sy = sin(y_curr);
-    //
-    //Eigen::Vector3d dr_body_aligned;
-    //dr_body_aligned.x() =  cy * dr_world.x() + sy * dr_world.y();
-    //dr_body_aligned.y() = -sy * dr_world.x() + cy * dr_world.y();
-    //dr_body_aligned.z() = dr_world.z(); // Z is unaffected by Yaw
-    //
-    //// Use this rotated error for the MPC
-    //Eigen::Vector3d dr = dr_body_aligned;
+        // Yaw Filter (Wrap-around Safe)
+        // We calculate the shortest difference, scale it by alpha, and add it.
+        double diff = y_raw - yaw_tag_smooth_;
+        
+        // Normalize diff to [-PI, PI]
+        while (diff > M_PI)  diff -= 2.0 * M_PI;
+        while (diff < -M_PI) diff += 2.0 * M_PI;
+
+        yaw_tag_smooth_ += lpf_alpha_ * diff;
+        
+        // Normalize result to [-PI, PI] just to be clean
+        while (yaw_tag_smooth_ > M_PI)  yaw_tag_smooth_ -= 2.0 * M_PI;
+        while (yaw_tag_smooth_ < -M_PI) yaw_tag_smooth_ += 2.0 * M_PI;
+    }
+
+    // --- 3. Construct the Smooth "World->Tag" Transform ---
     
-    Eigen::Vector3d dr_prev = x_ref.head<3>() - x_current_model.head<3>();  
-    
-    // Create Angle-Axis rotation for -yaw_ref around Z
-    Eigen::Quaterniond q_yaw_eigen(
-        Eigen::AngleAxisd(-y_curr, Eigen::Vector3d::UnitZ())
+    // Create Rotation from Smooth Yaw (Flat / Gravity Aligned)
+    Eigen::Quaterniond q_tag(
+        Eigen::AngleAxisd(yaw_tag_smooth_, Eigen::Vector3d::UnitZ())
     );
 
-    Eigen::Vector3d dr = q_yaw_eigen * dr_prev;  
-    
-    // 2. Attitude Error (Quaternion Manifold)
-    Eigen::Vector4d q_target = x_ref.segment<4>(3);
-    Eigen::Vector4d q_curr   = x_current_model.segment<4>(3);
-    Eigen::Vector3d dtheta   = quatErrorRodrigues(q_curr, q_target);
+    Eigen::Isometry3d T_world_tag = Eigen::Isometry3d::Identity();
+    T_world_tag.rotate(q_tag);
+    T_world_tag.pretranslate(t_tag_smooth_); // Use smoothed position
 
-    // 3. Velocity Error
-    Eigen::Vector3d dv = x_ref.segment<3>(7) - x_current_model.segment<3>(7);
+    // --- 2. Transform Current State (World -> Tag) ---
+    Eigen::Matrix<double, 13, 1> x_current_world;
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        x_current_world = current_state_model_;
+    }
+
+    // A. Position: p_tag = T_inv * p_world
+    Eigen::Vector3d p_world = x_current_world.head<3>();
+    Eigen::Vector3d p_tag = T_world_tag.inverse() * p_world;
+
+    // B. Orientation: q_tag = q_tag_world * q_world
+    Eigen::Quaterniond q_world(x_current_world(3), x_current_world(4), 
+                               x_current_world(5), x_current_world(6));
+    // q_tag is World->Tag. We need the inverse (Tag->World) to rotate the robot's world orientation into the tag frame.
+    Eigen::Quaterniond q_robot_tag = q_tag.inverse() * q_world;
+
+    // C. Velocities (Body Frame) - DO NOT ROTATE
+    // Why? The sensors measure velocity in the Body Frame. 
+    // The Body Frame is "attached" to the drone, regardless of where the drone is.
+    Eigen::Vector3d v_body = x_current_world.segment<3>(7);
+    Eigen::Vector3d w_body = x_current_world.tail<3>();
+
+    // Pack into local state vector
+    Eigen::Matrix<double, 13, 1> x_current_local;
+    x_current_local << p_tag, 
+                       q_robot_tag.w(), q_robot_tag.vec(), 
+                       v_body, w_body;
+
+    // --- 3. Define Reference (in Tag Frame) ---
+    Eigen::Matrix<double, 13, 1> x_ref;
+    x_ref.setZero();
+    x_ref(2) = 0.0; // 1.2m above the tag center (in Tag's Z axis)
+    x_ref(3) = 1.0; // Identity Quaternion (Aligned with Tag)
+
+    // --- 4. MPC Solve (in Tag Frame) ---
     
-    // 4. Omega Error
-    Eigen::Vector3d dw = x_ref.tail<3>() - x_current_model.tail<3>();
+    // Calculate Errors
+    // Position
+    Eigen::Vector3d dr = x_ref.head<3>() - x_current_local.head<3>();
+    
+    // Attitude (Quaternion Error)
+    Eigen::Vector4d q_ref_vec = x_ref.segment<4>(3);
+    Eigen::Vector4d q_curr_vec = x_current_local.segment<4>(3);
+    Eigen::Vector3d dtheta = quatErrorRodrigues(q_curr_vec, q_ref_vec);
+
+    // Velocity (v_ref is 0, so error is just -v_current)
+    Eigen::Vector3d dv = x_ref.segment<3>(7) - x_current_local.segment<3>(7);
+    Eigen::Vector3d dw = x_ref.tail<3>() - x_current_local.tail<3>();
 
     Eigen::VectorXd x0_error(12);
     x0_error << dr, dtheta, dv, dw;
-
-    Eigen::VectorXd u_opt_delta;
-    std::vector<Eigen::VectorXd> prediction_horizon;
     
-    bool success = mpc_controller_->solve(x0_error, u_opt_delta, prediction_horizon);
-
-    if (!success) {
-        ROS_WARN_THROTTLE(1.0, "[Planner] MPC Solver Failed/Infeasible!");
+    // --- TERMINATION CHECK ---
+    // If we are close enough to the reference (which is the ground), KILL MOTORS.
+    double pos_error = dr.norm();
+    double vel_error = dv.norm();
+    
+    // Check: Total Error < 15cm AND Velocity < 0.2 m/s
+    if (pos_error < 0.05 && vel_error < 0.05) {
+        ROS_WARN(">> TOUCHDOWN DETECTED. HALTING MOTORS. <<");
+        std_msgs::Empty halt_msg;
+        halt_pub_.publish(halt_msg);
+        
+        landing_active_ = false; // Stop MPC
         return;
-    } else {
-      // Pass the error trajectory AND the reference state (x_ref)
-      publishMPCTrajectory(mpc_path_pub_, mpc_poses_pub_, prediction_horizon, x_ref, "world");
     }
 
-    // --- Output Conversion ---
+    Eigen::VectorXd u_opt;
+    std::vector<Eigen::VectorXd> prediction_horizon;
     
-    // Create Angle-Axis rotation for -yaw_ref around Z
-    Eigen::Quaterniond q_inv_yaw_eigen(
-        Eigen::AngleAxisd(y_curr, Eigen::Vector3d::UnitZ())
-    ); 
-
-    // Target Position
-    Eigen::Vector3d r_cmd = x_ref.head<3>() + q_inv_yaw_eigen * prediction_horizon[0].head<3>();
-    //Eigen::Vector3d r_cmd =  r_cmd_rot;
-
-    // Target Velocity (Model Body Frame)
-    Eigen::Vector3d v_body_model = x_ref.segment<3>(7) + prediction_horizon[0].segment<3>(6);
-   
-    // Convert to World Frame Velocity for JSK Controller
-    // Since MPC runs in Model Frame, it outputs velocities in Model Body Frame.
-    // To get World Velocity: v_world = q_model_world * v_body_model
-    Eigen::Quaterniond q_model_now(
-      x_current_model(3), x_current_model(4), x_current_model(5), x_current_model(6)
-    );
-    //Eigen::Vector3d v_world = q_inv_yaw_eigen * v_body_model;
-    Eigen::Vector3d v_world = q_model_now * v_body_model;
+    bool success = mpc_controller_->solve(x0_error, u_opt, prediction_horizon);
     
-    // --- Publish ---
+    if (!success) {
+        ROS_WARN_THROTTLE(1.0, "MPC Failed");
+        return;
+    }
+
+    // Visualize (Optional: Send x_ref and prediction_horizon directly, 
+    // but remember to visualize in "land_mark" frame, not "world")
+    publishMPCTrajectory(mpc_path_pub_, mpc_poses_pub_, prediction_horizon, x_ref, "land_mark");
+
+    // --- 5. Convert Output (Tag -> World) ---
+    // The MPC output is x_{k+1}. We need to transform this back to World for the drone.
+
+    // A. Target Position (Tag Frame)
+    // x_ref is [0,0,1.2]. horizon[0] is the error dx.
+    // target = ref + error
+    Eigen::Vector3d p_target_tag = x_ref.head<3>() + prediction_horizon[0].head<3>();
+
+    // Transform to World: p_world = T * p_tag
+    Eigen::Vector3d p_target_world = T_world_tag * p_target_tag;
+
+    // B. Target Orientation (Tag Frame)
+    // Calculate target quaternion in Tag Frame
+    Eigen::Vector3d phi_next = prediction_horizon[0].segment<3>(3);
+    Eigen::Vector4d dq_next = rodriguesToQuat<double>(phi_next);
+    Eigen::Vector4d q_target_tag_vec = quatMultiply<double>(q_ref_vec, dq_next);
+    Eigen::Quaterniond q_target_tag(q_target_tag_vec(0), q_target_tag_vec(1), 
+                                    q_target_tag_vec(2), q_target_tag_vec(3));
+    
+    // Transform to World: q_world = q_tag_world * q_tag
+    // q_tag is World->Tag. We use it to rotate the local target back to world.
+    Eigen::Quaterniond q_target_world = q_tag * q_target_tag;
+    
+    // C. Target Velocity (Body Frame)
+    // The controller output v is in Body Frame. 
+    // We only need to rotate it to World Frame for the message.
+    Eigen::Vector3d v_target_body = x_ref.segment<3>(7) + prediction_horizon[0].segment<3>(6);
+    
+    // Rotate Body -> World (using the NEW target orientation)
+    Eigen::Vector3d v_target_world = q_target_world * v_target_body;
+
+    // --- 6. Publish ---
     aerial_robot_msgs::FlightNav cmd_msg;
     cmd_msg.header.stamp = ros::Time::now();
     cmd_msg.header.frame_id = "world";
 
-    cmd_msg.pos_xy_nav_mode = aerial_robot_msgs::FlightNav::POS_VEL_MODE;
-    cmd_msg.pos_z_nav_mode  = aerial_robot_msgs::FlightNav::POS_VEL_MODE;
-    cmd_msg.yaw_nav_mode    = aerial_robot_msgs::FlightNav::POS_MODE;
-    cmd_msg.target          = aerial_robot_msgs::FlightNav::COG; 
+    // Use POS_MODE first to stop jiggling!
+    cmd_msg.pos_xy_nav_mode = aerial_robot_msgs::FlightNav::POS_MODE;
+    cmd_msg.pos_z_nav_mode  = aerial_robot_msgs::FlightNav::POS_MODE;
+    cmd_msg.yaw_nav_mode    = aerial_robot_msgs::FlightNav::POS_MODE; 
     cmd_msg.control_frame   = aerial_robot_msgs::FlightNav::WORLD_FRAME;
+    cmd_msg.target          = aerial_robot_msgs::FlightNav::COG;
 
-    cmd_msg.target_pos_x = r_cmd.x();
-    cmd_msg.target_pos_y = r_cmd.y();
-    cmd_msg.target_pos_z = r_cmd.z();
+    // Positions
+    cmd_msg.target_pos_x = p_target_world.x();
+    cmd_msg.target_pos_y = p_target_world.y();
+    cmd_msg.target_pos_z = p_target_world.z();
 
-    cmd_msg.target_vel_x = v_world.x();
-    cmd_msg.target_vel_y = v_world.y();
-    cmd_msg.target_vel_z = v_world.z();
- 
-    // 3. Target Yaw Calculation
-    // ----------------------------------------------------------------------
-    // Step A: Create Quaternion from Reference Yaw
-    // We construct q_ref corresponding to (roll=0, pitch=0, yaw=yaw_ref)
-    // Note: Your helper uses Eigen (w, x, y, z) order, TF2 uses (x, y, z, w)
-    tf2::Quaternion q_ref_tf;
-    q_ref_tf.setRPY(0.0, 0.0, yaw_ref);
-    Eigen::Vector4d q_ref_eigen(q_ref_tf.w(), q_ref_tf.x(), q_ref_tf.y(), q_ref_tf.z());
+    // Yaw
+    double r_cmd, p_cmd, y_cmd;
+    tf2::Matrix3x3(tf2::Quaternion(q_target_world.x(), q_target_world.y(), 
+                                   q_target_world.z(), q_target_world.w())).getRPY(r_cmd, p_cmd, y_cmd);
+    cmd_msg.target_yaw = y_cmd;
 
-    // Step B: Extract Rodrigues Error from MPC Horizon
-    // Indices 3, 4, 5 correspond to the Rodrigues parameters (phi)
-    Eigen::Vector3d phi_mpc = prediction_horizon[0].segment<3>(3);
+    // Velocities (Optional, uncomment if switching back to POS_VEL_MODE)
+    // cmd_msg.target_vel_x = v_target_world.x();
+    // cmd_msg.target_vel_y = v_target_world.y();
+    // cmd_msg.target_vel_z = v_target_world.z();
 
-    // Step C: Convert Rodrigues Error -> Quaternion Error (delta_q)
-    // Using your helper function: q = [1; phi] / sqrt(1 + phi^2)
-    Eigen::Vector4d delta_q = rodriguesToQuat<double>(phi_mpc);
-
-    // Step D: Compose Rotations
-    // q_cmd = q_ref * delta_q
-    // This applies the MPC's optimal error correction to the reference
-    Eigen::Vector4d q_cmd = quatMultiply<double>(q_ref_eigen, delta_q);
-
-    // Step E: Extract Final Target Yaw
-    // Convert back to TF2 to get Euler angles
-    tf2::Quaternion q_cmd_final(q_cmd(1), q_cmd(2), q_cmd(3), q_cmd(0)); // x, y, z, w
-    double cmd_roll, cmd_pitch, cmd_yaw;
-    tf2::Matrix3x3(q_cmd_final).getRPY(cmd_roll, cmd_pitch, cmd_yaw);
-
-    // Apply to message
-    cmd_msg.target_yaw = cmd_yaw;
-    
     cmd_pub_.publish(cmd_msg);
-
-    // Debug Visualization
+    
+    // Debug
     geometry_msgs::PoseStamped debug_msg;
     debug_msg.header = cmd_msg.header;
-    debug_msg.pose.position.x = r_cmd.x();
-    debug_msg.pose.position.y = r_cmd.y();
-    debug_msg.pose.position.z = r_cmd.z();
-
-    // Visualize the Reference Orientation (Target Yaw)
-    tf2::Quaternion q_debug;
-    q_debug.setRPY(0, 0, cmd_yaw);
-    debug_msg.pose.orientation = tf2::toMsg(q_debug);
-    
-    debug_pub_.publish(debug_msg); 
+    debug_msg.pose.position.x = p_target_world.x();
+    debug_msg.pose.position.y = p_target_world.y();
+    debug_msg.pose.position.z = p_target_world.z();
+    debug_msg.pose.orientation.w = q_target_world.w();
+    debug_msg.pose.orientation.x = q_target_world.x();
+    debug_msg.pose.orientation.y = q_target_world.y();
+    debug_msg.pose.orientation.z = q_target_world.z();
+    debug_pub_.publish(debug_msg);
   }
 
   // Helper to visualize the 12-dim Error State Trajectory
