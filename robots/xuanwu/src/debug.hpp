@@ -71,7 +71,7 @@ inline void dumpEigenData(const std::string& filename,
  * @param tolerance Threshold for considering two numbers different
  * @param max_print Maximum number of specific errors to print before silencing
  */
-void compareMatrices(const Eigen::MatrixXd& A, 
+inline void compareMatrices(const Eigen::MatrixXd& A, 
                      const Eigen::MatrixXd& B, 
                      std::string nameA = "MatA", 
                      std::string nameB = "MatB", 

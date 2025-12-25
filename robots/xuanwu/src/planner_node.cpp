@@ -30,6 +30,8 @@
 #include <tf2_ros/transform_listener.h> 
 #include <tf2_ros/buffer.h>
 
+#include <chrono> // Added for timing
+
 // ============================= ROS façade ==================================
 class PlannerNode
 {
@@ -116,6 +118,11 @@ private:
   double control_rate_;
   int    prediction_horizon_;
   int    lookahead_steps_; 
+  
+  // Timing / Profiling Variables
+  std::vector<double> solve_times_ms_;
+  ros::Time last_print_time_;
+  const double print_interval_ = 0.5; // Print every 1 second
 
   // --- State Management ---
   // Stored in MODEL FRAME
@@ -155,7 +162,7 @@ private:
     
     nh_.param<double>("control_rate", control_rate_, 20.0);
     nh_.param<int>("prediction_horizon", prediction_horizon_, 20);
-    nh_.param<int>("lookahead_steps", lookahead_steps_, 3); 
+    nh_.param<int>("lookahead_steps", lookahead_steps_, 5); 
   }
 
   // ----------------------- Callbacks ---------------------------
@@ -200,24 +207,36 @@ private:
   }
 
   // 2. Reconfigure
-  void reconfigureCallback(xuanwu::PlannerConfig &config, uint32_t level) 
+  void reconfigureCallback(xuanwu::PlannerConfig &config, uint32_t level)
   {
-    ROS_INFO("Reconfiguring MPC Planner...");
-
-    lookahead_steps_ = config.lookahead_steps;
-
-    Eigen::VectorXd Q_diag(12);
-    Q_diag << config.Q_pos_x, config.Q_pos_y, config.Q_pos_z,
-              config.Q_att_r, config.Q_att_p, config.Q_att_y,
-              config.Q_vel_x, config.Q_vel_y, config.Q_vel_z,
-              config.Q_omega, config.Q_omega, config.Q_omega;
-
-    Eigen::VectorXd R_diag(4);
-    R_diag << config.R_thrust, config.R_thrust, config.R_thrust, config.R_thrust;
-
-    if(mpc_controller_) {
-        mpc_controller_->updateWeights(Q_diag, R_diag);
-    }
+      ROS_INFO("Reconfiguring MPC Planner...");
+  
+      // 1. Check if Control Rate Changed -> Update Timer
+      if (std::abs(config.control_rate - control_rate_) > 1e-3) {
+          control_rate_ = config.control_rate;
+          control_timer_.setPeriod(ros::Duration(1.0 / control_rate_));
+          ROS_INFO(">> Timer updated to %.1f Hz", control_rate_);
+      }
+  
+      // 2. Update Local Configs
+      prediction_horizon_ = config.horizon; // Make sure cfg uses "horizon"
+      lookahead_steps_    = config.lookahead_steps;
+  
+      // 3. Prepare Weights
+      Eigen::VectorXd Q_diag(12);
+      Q_diag << config.Q_pos_x, config.Q_pos_y, config.Q_pos_z,
+                config.Q_att_r, config.Q_att_p, config.Q_att_y,
+                config.Q_vel_x, config.Q_vel_y, config.Q_vel_z,
+                config.Q_omega, config.Q_omega, config.Q_omega;
+  
+      Eigen::VectorXd R_diag(4);
+      R_diag << config.R_thrust, config.R_thrust, config.R_thrust, config.R_thrust;
+  
+      // 4. Update MPC (Resize solver if needed)
+      if(mpc_controller_) {
+          // Pass the NEW horizon and NEW dt
+          mpc_controller_->updateConfig(prediction_horizon_, 1.0/control_rate_, Q_diag, R_diag);
+      }
   }
 
   // 3. Main Control Loop
@@ -238,7 +257,7 @@ private:
     // Convert Raw Translation
     Eigen::Vector3d t_raw(tf_msg.transform.translation.x,
                           tf_msg.transform.translation.y,
-                          tf_msg.transform.translation.z + 0.25);
+                          tf_msg.transform.translation.z + 0.30);
 
     // Convert Raw Orientation -> Extract Yaw
     tf2::Quaternion q_raw_tf;
@@ -350,11 +369,41 @@ private:
         return;
     }
 
+    // --- START TIMER ---
+    auto start_time = std::chrono::high_resolution_clock::now();
+
     Eigen::VectorXd u_opt;
     std::vector<Eigen::VectorXd> prediction_horizon;
     
     bool success = mpc_controller_->solve(x0_error, u_opt, prediction_horizon);
     
+    // --- END TIMER ---
+    auto end_time = std::chrono::high_resolution_clock::now();
+    double duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count(); 
+
+    // --- FREQUENCY MONITORING ---
+    solve_times_ms_.push_back(duration_ms);
+
+    if ((ros::Time::now() - last_print_time_).toSec() > print_interval_) {
+        double sum = 0.0;
+        double max_ms = 0.0;
+        for (double t : solve_times_ms_) {
+            sum += t;
+            if (t > max_ms) max_ms = t;
+        }
+        double avg_ms = solve_times_ms_.empty() ? 0.0 : sum / solve_times_ms_.size();
+
+        // Max Theor. Freq = 1000ms / avg_solve_time
+        double max_freq = (avg_ms > 0) ? (1000.0 / avg_ms) : 0.0;
+
+        ROS_INFO_THROTTLE(1.0,
+            "[MPC Stats] Avg Time: %.3f ms | Max Time: %.3f ms | Max Theor. Freq: %.1f Hz",
+            avg_ms, max_ms, max_freq);
+
+        solve_times_ms_.clear();
+        last_print_time_ = ros::Time::now();
+    }
+
     if (!success) {
         ROS_WARN_THROTTLE(1.0, "MPC Failed");
         return;
@@ -370,14 +419,14 @@ private:
     // A. Target Position (Tag Frame)
     // x_ref is [0,0,1.2]. horizon[0] is the error dx.
     // target = ref + error
-    Eigen::Vector3d p_target_tag = x_ref.head<3>() + prediction_horizon[0].head<3>();
+    Eigen::Vector3d p_target_tag = x_ref.head<3>() + prediction_horizon[lookahead_steps_].head<3>();
 
     // Transform to World: p_world = T * p_tag
     Eigen::Vector3d p_target_world = T_world_tag * p_target_tag;
 
     // B. Target Orientation (Tag Frame)
     // Calculate target quaternion in Tag Frame
-    Eigen::Vector3d phi_next = prediction_horizon[0].segment<3>(3);
+    Eigen::Vector3d phi_next = prediction_horizon[lookahead_steps_].segment<3>(3);
     Eigen::Vector4d dq_next = rodriguesToQuat<double>(phi_next);
     Eigen::Vector4d q_target_tag_vec = quatMultiply<double>(q_ref_vec, dq_next);
     Eigen::Quaterniond q_target_tag(q_target_tag_vec(0), q_target_tag_vec(1), 
@@ -390,7 +439,7 @@ private:
     // C. Target Velocity (Body Frame)
     // The controller output v is in Body Frame. 
     // We only need to rotate it to World Frame for the message.
-    Eigen::Vector3d v_target_body = x_ref.segment<3>(7) + prediction_horizon[0].segment<3>(6);
+    Eigen::Vector3d v_target_body = x_ref.segment<3>(7) + prediction_horizon[lookahead_steps_].segment<3>(6);
     
     // Rotate Body -> World (using the NEW target orientation)
     Eigen::Vector3d v_target_world = q_target_world * v_target_body;
@@ -417,11 +466,6 @@ private:
     tf2::Matrix3x3(tf2::Quaternion(q_target_world.x(), q_target_world.y(), 
                                    q_target_world.z(), q_target_world.w())).getRPY(r_cmd, p_cmd, y_cmd);
     cmd_msg.target_yaw = y_cmd;
-
-    // Velocities (Optional, uncomment if switching back to POS_VEL_MODE)
-    // cmd_msg.target_vel_x = v_target_world.x();
-    // cmd_msg.target_vel_y = v_target_world.y();
-    // cmd_msg.target_vel_z = v_target_world.z();
 
     cmd_pub_.publish(cmd_msg);
     

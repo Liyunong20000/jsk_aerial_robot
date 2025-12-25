@@ -17,7 +17,7 @@ class LandingMission:
         
         # Navigation
         # Start point to ensure Tag visibility (adjust as needed)
-        self.search_point = np.array([1.5, 0.0, 2.0]) 
+        self.search_point = np.array([1.5, 0.0, 1.5]) 
         self.approach_height = 2.0    # Stay high for the approach
         self.nav_tolerance = 0.20     # 20cm tolerance for alignment
         
@@ -54,7 +54,7 @@ class LandingMission:
         self.current_pos = np.array([
             msg.pose.pose.position.x,
             msg.pose.pose.position.y,
-            msg.pose.pose.position.z
+            msg.pose.pose.position.z - 0.19
         ])
 
     def send_pos_cmd(self, target_pos):
@@ -176,7 +176,7 @@ class LandingMission:
                 # 3. Monitor for completion (optional, C++ handles the Halt)
                 rospy.loginfo_throttle(1.0, f"   >> C++ Landing in Progress... Z: {self.current_pos[2]:.2f}")
                 
-                if self.current_pos[2] < 0.15:
+                if self.current_pos[2] < 0.05:
                      # Just a safeguard monitor
                      rospy.loginfo(">> Drone is near ground. Waiting for C++ Halt...")
                      

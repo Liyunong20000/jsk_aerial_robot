@@ -34,7 +34,7 @@ endif()
 
 # MUST come before catkin_package()
 generate_dynamic_reconfigure_options(
-  cfg/Eskf.cfg
+  #  cfg/Eskf.cfg
   cfg/Planner.cfg
 )
 
@@ -51,19 +51,23 @@ include_directories(
   ${QPOASES_ROOT}/include
 )
 
-add_executable(noisy_odom src/noisy_odom.cpp)
-target_link_libraries(noisy_odom ${catkin_LIBRARIES})
-add_dependencies(noisy_odom ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#add_executable(noisy_odom src/noisy_odom.cpp)
+#target_link_libraries(noisy_odom ${catkin_LIBRARIES})
+#add_dependencies(noisy_odom ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#
+#add_executable(eskf_node src/eskf_node.cpp)
+#target_link_libraries(eskf_node ${catkin_LIBRARIES})
+#add_dependencies(eskf_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#
+#add_executable(odom_logger src/odom_logger.cpp)
+#target_link_libraries(odom_logger ${catkin_LIBRARIES})
+#add_dependencies(odom_logger ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-add_executable(eskf_node src/eskf_node.cpp)
-target_link_libraries(eskf_node ${catkin_LIBRARIES})
-add_dependencies(eskf_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
-add_executable(odom_logger src/odom_logger.cpp)
-target_link_libraries(odom_logger ${catkin_LIBRARIES})
-add_dependencies(odom_logger ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
-add_executable(mpc_planner_node src/planner_node.cpp)
+add_executable(mpc_planner_node
+  src/planner_node.cpp
+  src/mpc_controller.cpp
+  src/quadrotor_model.cpp
+)
 target_link_libraries(mpc_planner_node
 	${catkin_LIBRARIES}
 	qpOASES
