@@ -21,9 +21,10 @@ public:
         Eigen::VectorXd Q_diag; 
         Eigen::VectorXd R_diag; 
         
+        // Absolute Motor Limits
         Eigen::VectorXd u_min;
         Eigen::VectorXd u_max;
-        
+
         Config(); // Implementation moved to cpp
     };
 
@@ -50,8 +51,8 @@ private:
     LinearQuadrotorModel& model_;
     
     // QP Dimensions
-    int nx_;
-    int nu_;
+    int nx_; // Will be 16 (12 State + 4 Integrator)
+    int nu_; // Will be  4 (Delta U)
     int n_vars_; 
     int n_cons_; 
 
@@ -77,5 +78,7 @@ public:
     void updateConfig(int N, double dt, const Eigen::VectorXd& q_diag, const Eigen::VectorXd& r_diag) override;
     
     void reset() override;
+
+    // x0_error is now 16-dim
     bool solve(const Eigen::VectorXd& x0_error, Eigen::VectorXd& u_opt, std::vector<Eigen::VectorXd>& horizon_states);
 };

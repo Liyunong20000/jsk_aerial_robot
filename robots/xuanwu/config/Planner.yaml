@@ -6,7 +6,7 @@ cmd_topic:   "/xuanwu/uav/nav"
 # Control Loop
 control_rate: 20.0        # Hz
 prediction_horizon: 20    # Steps (N)
-lookahead_steps: 3        # Which step to send to JSK controller // NOT BEING USED RIGHT NOW.....
+lookahead_steps: 1        # Which step to send to JSK controller
 
 # --- Tuning Weights ---
 # Position (High penalty = tighter tracking)
@@ -28,4 +28,4 @@ Q_vel_z: 100.0
 Q_omega: 100.0
 
 # Input Usage (Higher = save battery/smoother; Lower = aggressive)
-R_thrust: 0.1
+R_thrust: 0.001

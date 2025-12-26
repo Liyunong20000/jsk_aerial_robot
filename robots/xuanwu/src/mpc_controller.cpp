@@ -8,8 +8,8 @@ namespace {
                                const Eigen::MatrixXd& B, 
                                const Eigen::MatrixXd& Q, 
                                const Eigen::MatrixXd& R, 
-                               double tolerance = 1e-12, 
-                               int max_iter = 1000) 
+                               double tolerance = 1e-9, 
+                               int max_iter = 5000) 
     {
         Eigen::MatrixXd P = Q; 
         Eigen::MatrixXd P_next = P;
@@ -46,7 +46,7 @@ namespace {
 MPC::Config::Config() {
     N = 20;
     dt = 0.05;
-    Q_diag = Eigen::VectorXd::Ones(12);
+    Q_diag = Eigen::VectorXd::Ones(AUG_STATE_DIM);
     R_diag = Eigen::VectorXd::Ones(4);
     u_min = Eigen::VectorXd::Zero(4);
     u_max = Eigen::VectorXd::Constant(4, 10.0);
@@ -72,7 +72,7 @@ void MPC::updateWeights(const Eigen::VectorXd& q_diag, const Eigen::VectorXd& r_
 LMPC::LMPC(const MPC::Config& cfg, LinearQuadrotorModel& model_ref) 
     : MPC(cfg), model_(model_ref) 
 {
-    nx_ = REDUCED_STATE_DIM; // 12
+    nx_ = AUG_STATE_DIM; // 16
     nu_ = INPUT_DIM;         // 4
     
     n_vars_ = config_.N * (nu_ + nx_); 
@@ -95,7 +95,8 @@ void LMPC::reset() {
     model_.linearize(x_hover, u_hover, config_.dt);
     
     // 2. Re-Compute Terminal Cost P
-    P_ = solveDARE(model_.getA(), model_.getB(), Q_, R_);
+    P_ = solveDARE(model_.getA_aug(), model_.getB_aug(), Q_, R_);
+    P_.setZero();
     
     // 3. Re-Construct QP Matrices
     constructQPMatrices();
@@ -126,8 +127,8 @@ void LMPC::constructQPMatrices() {
     
     Eigen::MatrixXd NegI = -Eigen::MatrixXd::Identity(nx_, nx_);
     Eigen::MatrixXd EyeNu = Eigen::MatrixXd::Identity(nu_, nu_);
-    const Eigen::MatrixXd& A_sys = model_.getA();
-    const Eigen::MatrixXd& B_sys = model_.getB();
+    const Eigen::MatrixXd& A_sys = model_.getA_aug();
+    const Eigen::MatrixXd& B_sys = model_.getB_aug();
 
     auto setA = [&](int r_cons, int c_var, const Eigen::MatrixXd& M) {
         for(int i=0; i<M.rows(); ++i)
@@ -149,7 +150,7 @@ void LMPC::constructQPMatrices() {
 
     // Input Limits Part
     int row_lim = config_.N * nx_; 
-    col = 0;
+    col = 16;
     for(int k=0; k < config_.N; ++k) {
         setA(row_lim, col, EyeNu);
         col += nu_ + nx_; 
@@ -212,7 +213,7 @@ bool LMPC::solve(const Eigen::VectorXd& x0_error, Eigen::VectorXd& u_opt, std::v
     if (!is_initialized_) return false;
 
     // Update Initial Condition Constraint
-    Eigen::VectorXd b_eq_first = -model_.getA() * x0_error;
+    Eigen::VectorXd b_eq_first = -model_.getA_aug() * x0_error;
     for(int i=0; i<nx_; ++i) {
         lbA_data_[i] = b_eq_first(i);
         ubA_data_[i] = b_eq_first(i);

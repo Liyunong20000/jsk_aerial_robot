@@ -241,11 +241,12 @@ private:
       lookahead_steps_    = config.lookahead_steps;
   
       // 3. Prepare Weights
-      Eigen::VectorXd Q_diag(12);
+      Eigen::VectorXd Q_diag(16);
       Q_diag << config.Q_pos_x, config.Q_pos_y, config.Q_pos_z,
                 config.Q_att_r, config.Q_att_p, config.Q_att_y,
                 config.Q_vel_x, config.Q_vel_y, config.Q_vel_z,
-                config.Q_omega, config.Q_omega, config.Q_omega;
+                config.Q_omega, config.Q_omega, config.Q_omega,
+                  0.00001,0.00001,0.00001,0.00001;
   
       Eigen::VectorXd R_diag(4);
       R_diag << config.R_thrust, config.R_thrust, config.R_thrust, config.R_thrust;
@@ -369,11 +370,11 @@ private:
     Eigen::Vector3d dv = x_ref.segment<3>(7) - x_current_local.segment<3>(7);
     Eigen::Vector3d dw = x_ref.tail<3>() - x_current_local.tail<3>();
 
-    //Eigen::VectorXd x0_error(AUG_STATE_DIM);
-    //x0_error << dr, dtheta, dv, dw, u_last_;
+    Eigen::VectorXd x0_error(AUG_STATE_DIM);
+    x0_error << dr, dtheta, dv, dw, u_last_;
     
-    Eigen::VectorXd x0_error(REDUCED_STATE_DIM);
-    x0_error << dr, dtheta, dv, dw;
+    //Eigen::VectorXd x0_error(REDUCED_STATE_DIM);
+    //x0_error << dr, dtheta, dv, dw;
 
     // --- TERMINATION CHECK ---
     // If we are close enough to the reference (which is the ground), KILL MOTORS.
@@ -432,7 +433,7 @@ private:
 
     // --- 8. Update Integrator ---
     // u_k = u_{k-1} + delta_u
-    u_last_ = u_opt;
+    u_last_ += u_opt;
 
     // Visualize (Optional: Send x_ref and prediction_horizon directly, 
     // but remember to visualize in "land_mark" frame, not "world")
