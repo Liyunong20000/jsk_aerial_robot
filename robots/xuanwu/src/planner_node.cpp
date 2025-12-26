@@ -36,6 +36,9 @@
 class PlannerNode
 {
 public:
+  // !!! CRITICAL FIX: Ensure 16-byte alignment for Eigen members !!!
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  
   explicit PlannerNode(ros::NodeHandle& nh)
     : nh_(nh)
     , has_state_(false)
@@ -44,7 +47,6 @@ public:
   {
     // --- Load Parameters ---
     loadParameters();
-
     // --- Init Architecture ---
     
     // 2. Initialize Quadrotor Model
@@ -66,25 +68,39 @@ public:
     J_robot(2,2) = 0.01544169758; // Izz
     
     quad_model_.setInertia(J_robot);
-
+    
     // 4. Initialize MPC Controller Config
     MPC::Config mpc_cfg;
     mpc_cfg.N = prediction_horizon_;
     mpc_cfg.dt = 1.0 / control_rate_;
     
+    mpc_cfg.u_max = Eigen::VectorXd::Constant(4, quad_model_.getThrustLimit());
+
     // 5. Instantiate LMPC
     mpc_controller_ = std::make_unique<LMPC>(mpc_cfg, quad_model_);
 
+    u_last_ = Eigen::VectorXd::Zero(4);
+
+    std::cout << "PRE CALLBACK LOG INSTANCE!!" << std::endl;
     // --- Topics ---
     state_sub_ = nh_.subscribe(state_topic_, 1, &PlannerNode::stateCallback, this);
+
+    std::cout << "stateCallback registered!!" << std::endl;
     cmd_pub_   = nh_.advertise<aerial_robot_msgs::FlightNav>(cmd_topic_, 1);
+
+    std::cout << "command publisher registered!!" << std::endl;
     debug_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("/xuanwu/debug/mpc_setpoint", 1);
+
+    std::cout << "debug pub registered!!" << std::endl;
     
     halt_pub_    = nh_.advertise<std_msgs::Empty>("/xuanwu/teleop_command/halt", 1);
+
+    std::cout << "halt pub registered!!" << std::endl;
     trigger_sub_ = nh_.subscribe("start_landing", 1, &PlannerNode::triggerCallback, this);
 
     // --- Dynamic Reconfigure ---
     dr_callback_ = boost::bind(&PlannerNode::reconfigureCallback, this, _1, _2);
+
     dr_server_.setCallback(dr_callback_);
 
     // --- Control Timer ---
@@ -128,6 +144,7 @@ private:
   // Stored in MODEL FRAME
   // 13-dim: [px, py, pz | qw, qx, qy, qz | vx, vy, vz | wx, wy, wz ]
   Eigen::Matrix<double, 13, 1> current_state_model_;
+  Eigen::VectorXd u_last_; // Stores accumulated thrust deviation (u_{k-1})
   bool has_state_;
   std::mutex state_mutex_;
   bool landing_active_;
@@ -169,6 +186,7 @@ private:
   
   void triggerCallback(const std_msgs::BoolConstPtr& msg) {
       if (msg->data) {
+          u_last_.setZero(4);
           landing_active_ = true;
           ROS_WARN(">> LANDING SEQUENCE ACTIVATED (C++ MPC Taking Control) <<");
       } else {
@@ -351,9 +369,12 @@ private:
     Eigen::Vector3d dv = x_ref.segment<3>(7) - x_current_local.segment<3>(7);
     Eigen::Vector3d dw = x_ref.tail<3>() - x_current_local.tail<3>();
 
-    Eigen::VectorXd x0_error(12);
-    x0_error << dr, dtheta, dv, dw;
+    //Eigen::VectorXd x0_error(AUG_STATE_DIM);
+    //x0_error << dr, dtheta, dv, dw, u_last_;
     
+    Eigen::VectorXd x0_error(REDUCED_STATE_DIM);
+    x0_error << dr, dtheta, dv, dw;
+
     // --- TERMINATION CHECK ---
     // If we are close enough to the reference (which is the ground), KILL MOTORS.
     double pos_error = dr.norm();
@@ -408,6 +429,10 @@ private:
         ROS_WARN_THROTTLE(1.0, "MPC Failed");
         return;
     }
+
+    // --- 8. Update Integrator ---
+    // u_k = u_{k-1} + delta_u
+    u_last_ = u_opt;
 
     // Visualize (Optional: Send x_ref and prediction_horizon directly, 
     // but remember to visualize in "land_mark" frame, not "world")
@@ -555,6 +580,7 @@ int main(int argc, char** argv)
   ros::NodeHandle nh("~");
 
   PlannerNode node(nh);
+
   ros::spin();
   return 0;
 }
