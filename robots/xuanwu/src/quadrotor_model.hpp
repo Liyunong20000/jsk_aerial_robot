@@ -15,17 +15,23 @@
 // CONSTANTS & TYPES
 // =========================================================================
 constexpr int FULL_STATE_DIM    = 13; // [r(3), q(4), v(3), w(3)]
+constexpr int AUG_STATE_DIM    = 16; // [r(3), phi(3), v(3), w(3), u(4)]
 constexpr int REDUCED_STATE_DIM = 12; // [dr(3), phi(3), dv(3), dw(3)]
-constexpr int INPUT_DIM         = 4;  // [f1, f2, f3, f4]
+constexpr int INPUT_DIM         = 4;  // [df1, df2, df3, df4]
 
 using Scalar     = double;
 using VectorFull = Eigen::Matrix<Scalar, FULL_STATE_DIM, 1>;
 using VectorRed  = Eigen::Matrix<Scalar, REDUCED_STATE_DIM, 1>;
+using VectorAug  = Eigen::Matrix<Scalar, AUG_STATE_DIM, 1>;
 using VectorIn   = Eigen::Matrix<Scalar, INPUT_DIM, 1>;
 
-using MatrixA    = Eigen::Matrix<Scalar, REDUCED_STATE_DIM, REDUCED_STATE_DIM>;
-using MatrixB    = Eigen::Matrix<Scalar, REDUCED_STATE_DIM, INPUT_DIM>;
-using MatrixE    = Eigen::Matrix<Scalar, FULL_STATE_DIM, REDUCED_STATE_DIM>;
+using MatrixA       = Eigen::Matrix<Scalar, REDUCED_STATE_DIM, REDUCED_STATE_DIM>;
+using MatrixA_full  = Eigen::Matrix<Scalar, FULL_STATE_DIM, FULL_STATE_DIM>;
+using MatrixA_aug   = Eigen::Matrix<Scalar, AUG_STATE_DIM, AUG_STATE_DIM>;
+using MatrixB       = Eigen::Matrix<Scalar, REDUCED_STATE_DIM, INPUT_DIM>;
+using MatrixB_full  = Eigen::Matrix<Scalar, FULL_STATE_DIM, INPUT_DIM>;
+using MatrixB_aug   = Eigen::Matrix<Scalar, AUG_STATE_DIM, INPUT_DIM>;
+using MatrixE       = Eigen::Matrix<Scalar, FULL_STATE_DIM, REDUCED_STATE_DIM>;
 
 // =========================================================================
 // RK4 INTEGRATOR (Template must remain in header)
@@ -56,6 +62,9 @@ protected:
     Eigen::Matrix3d J_inv_;
 
 public:
+    // !!! CRITICAL FIX: Ensure 16-byte alignment for Eigen members !!!
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     QuadrotorModel();
     virtual ~QuadrotorModel() = default;
 
@@ -151,13 +160,20 @@ public:
 class LinearQuadrotorModel : public QuadrotorModel {
 private:
     MatrixA A_; 
+    MatrixA_aug A_aug_; 
     MatrixB B_; 
+    MatrixB_aug B_aug_; 
 
 public:
+    // !!! CRITICAL FIX: Ensure 16-byte alignment for Eigen members !!!
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     using QuadrotorModel::QuadrotorModel; 
 
     const MatrixA& getA() const;
+    const MatrixA_aug& getA_aug() const;
     const MatrixB& getB() const;
+    const MatrixB_aug& getB_aug() const;
 
     // Definition moved to CPP to hide autodiff dependencies!
     void linearize(const VectorFull& x_nom, const VectorIn& u_nom, Scalar dt);

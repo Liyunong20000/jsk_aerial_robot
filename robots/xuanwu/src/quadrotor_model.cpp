@@ -40,7 +40,7 @@ Scalar QuadrotorModel::getThrustLimit() const { return thrust_limit_; }
 
 std::pair<VectorFull, VectorIn> QuadrotorModel::findHoverConditions() const {
     VectorFull x_hov = VectorFull::Zero(); 
-    x_hov(3) = 1.0; 
+    x_hov(3) = 1.0; // Ensure unit quaternion 
     
     Scalar u_val = (m_ * g_) / 4.0;
     
@@ -57,7 +57,9 @@ std::pair<VectorFull, VectorIn> QuadrotorModel::findHoverConditions() const {
 // =========================================================================
 
 const MatrixA& LinearQuadrotorModel::getA() const { return A_; }
+const MatrixA_aug& LinearQuadrotorModel::getA_aug() const { return A_aug_; }
 const MatrixB& LinearQuadrotorModel::getB() const { return B_; }
+const MatrixB_aug& LinearQuadrotorModel::getB_aug() const { return B_aug_; }
 
 void LinearQuadrotorModel::linearize(const VectorFull& x_nom, const VectorIn& u_nom, Scalar dt) 
 {
@@ -88,13 +90,32 @@ void LinearQuadrotorModel::linearize(const VectorFull& x_nom, const VectorIn& u_
     
     autodiff::jacobian(discrete_step_func, autodiff::wrt(z), autodiff::at(z), F_real, J_real);
 
-    Eigen::Matrix<Scalar, 13, 13> A_full = J_real.block<13, 13>(0, 0).cast<Scalar>();
-    Eigen::Matrix<Scalar, 13, 4>  B_full = J_real.block<13, 4>(0, 13).cast<Scalar>();
+    MatrixA_full A_full = J_real.block<FULL_STATE_DIM, FULL_STATE_DIM>(0, 0).cast<Scalar>();
+    MatrixB_full B_full = J_real.block<FULL_STATE_DIM, INPUT_DIM>(0, FULL_STATE_DIM).cast<Scalar>();
 
     // 4. Lift Projection
-    Eigen::Vector4d q_nom = x_nom.segment<4>(3);
+    Eigen::Vector4d q_nom = x_nom.segment<INPUT_DIM>(3);
     MatrixE E = errorStateLift(q_nom); 
 
     A_ = E.transpose() * A_full * E;
     B_ = E.transpose() * B_full;
+
+    // 5. Construct Augmented Matrices
+    A_aug_.setZero();
+    B_aug_.setZero();
+    
+    // --------------------------------------------------------
+    // Formulation:
+    //   x_{k+1} = A * x_k     + B * u_{k-1} + B * du_k
+    //   u_{k}   = 0 * x_k     + I * u_{k-1} + I * du_k
+    // --------------------------------------------------------
+    // Augmented State: z_k = [x_k, u_{k-1}]
+    // Augmented Input: v_k = du_k
+
+
+    A_aug_.block(0 , 0, REDUCED_STATE_DIM, REDUCED_STATE_DIM) = A_;
+    A_aug_.block(0 , REDUCED_STATE_DIM, REDUCED_STATE_DIM, INPUT_DIM) = B_;
+    A_aug_.block(REDUCED_STATE_DIM, REDUCED_STATE_DIM, INPUT_DIM, INPUT_DIM) = Eigen::MatrixXd::Identity(INPUT_DIM, INPUT_DIM);
+    B_aug_.block(0, 0, REDUCED_STATE_DIM, INPUT_DIM) = B_;
+    B_aug_.block(REDUCED_STATE_DIM, 0, INPUT_DIM, INPUT_DIM) = Eigen::MatrixXd::Identity(INPUT_DIM, INPUT_DIM);
 }
