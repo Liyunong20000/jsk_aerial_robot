@@ -476,11 +476,16 @@ private:
     cmd_msg.header.frame_id = "world";
 
     // Use POS_MODE first to stop jiggling!
-    cmd_msg.pos_xy_nav_mode = aerial_robot_msgs::FlightNav::POS_MODE;
-    cmd_msg.pos_z_nav_mode  = aerial_robot_msgs::FlightNav::POS_MODE;
-    cmd_msg.yaw_nav_mode    = aerial_robot_msgs::FlightNav::POS_MODE; 
+    cmd_msg.pos_xy_nav_mode = aerial_robot_msgs::FlightNav::POS_VEL_MODE;
+    cmd_msg.pos_z_nav_mode  = aerial_robot_msgs::FlightNav::POS_VEL_MODE;
+    cmd_msg.yaw_nav_mode    = aerial_robot_msgs::FlightNav::POS_MODE;
     cmd_msg.control_frame   = aerial_robot_msgs::FlightNav::WORLD_FRAME;
     cmd_msg.target          = aerial_robot_msgs::FlightNav::COG;
+
+    // 2. Velocidades (Feedforward: A velocidade que o MPC calculou para esse ponto)
+    cmd_msg.target_vel_x = v_target_world.x();
+    cmd_msg.target_vel_y = v_target_world.y();
+    cmd_msg.target_vel_z = v_target_world.z();
 
     // Positions
     cmd_msg.target_pos_x = p_target_world.x();
@@ -494,7 +499,6 @@ private:
     cmd_msg.target_yaw = y_cmd;
 
     cmd_pub_.publish(cmd_msg);
-    
     // Debug
     geometry_msgs::PoseStamped debug_msg;
     debug_msg.header = cmd_msg.header;
