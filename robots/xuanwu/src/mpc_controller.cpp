@@ -184,7 +184,7 @@ void LMPC::constructQPMatrices() {
         int z_global_idx = col + nu_ + 2;
         A_data_[row_gnd * n_vars_ + z_global_idx] = 1.0;
         lbA_data_[row_gnd] = -qpOASES::INFTY;
-        ubA_data_[row_gnd] = 0.10; 
+        ubA_data_[row_gnd] = qpOASES::INFTY; 
         col += nu_ + nx_; 
         row_gnd++;        
     }

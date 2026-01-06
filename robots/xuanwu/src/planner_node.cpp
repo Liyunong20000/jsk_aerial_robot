@@ -36,9 +36,6 @@
 class PlannerNode
 {
 public:
-  // !!! CRITICAL FIX: Ensure 16-byte alignment for Eigen members !!!
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  
   explicit PlannerNode(ros::NodeHandle& nh)
     : nh_(nh)
     , has_state_(false)
@@ -81,21 +78,16 @@ public:
 
     u_last_ = Eigen::VectorXd::Zero(4);
 
-    std::cout << "PRE CALLBACK LOG INSTANCE!!" << std::endl;
     // --- Topics ---
     state_sub_ = nh_.subscribe(state_topic_, 1, &PlannerNode::stateCallback, this);
 
-    std::cout << "stateCallback registered!!" << std::endl;
     cmd_pub_   = nh_.advertise<aerial_robot_msgs::FlightNav>(cmd_topic_, 1);
 
-    std::cout << "command publisher registered!!" << std::endl;
     debug_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("/xuanwu/debug/mpc_setpoint", 1);
 
-    std::cout << "debug pub registered!!" << std::endl;
     
     halt_pub_    = nh_.advertise<std_msgs::Empty>("/xuanwu/teleop_command/halt", 1);
 
-    std::cout << "halt pub registered!!" << std::endl;
     trigger_sub_ = nh_.subscribe("start_landing", 1, &PlannerNode::triggerCallback, this);
 
     // --- Dynamic Reconfigure ---
@@ -103,10 +95,18 @@ public:
 
     dr_server_.setCallback(dr_callback_);
 
-    // --- Control Timer ---
+    //// --- Control Timer ---
+    //control_timer_ = nh_.createTimer(ros::Duration(1.0 / control_rate_), 
+    //                                 &PlannerNode::controlLoop, this);
+    
+    // 1. MPC Loop (Mantém 20Hz ou o que estiver no config)
     control_timer_ = nh_.createTimer(ros::Duration(1.0 / control_rate_), 
-                                     &PlannerNode::controlLoop, this);
-                                     
+                                     &PlannerNode::mpcLoop, this);
+    
+    // 2. Publish Loop (Fixo em alta frequência, ex: 50Hz ou 100Hz)
+    publish_timer_ = nh_.createTimer(ros::Duration(0.01), 
+                                 &PlannerNode::publishLoop, this);
+
     ROS_INFO("MPC Planner Node Started. Rate: %.2f Hz", control_rate_);
   }
 
@@ -122,6 +122,19 @@ private:
   ros::Publisher mpc_path_pub_ = nh_.advertise<nav_msgs::Path>("mpc_prediction_path", 1);
   ros::Publisher mpc_poses_pub_ = nh_.advertise<geometry_msgs::PoseArray>("mpc_prediction_poses", 1);
   ros::Timer      control_timer_;
+  
+  // Timer novo
+  ros::Timer publish_timer_;
+  
+  // Estrutura para compartilhar dados entre loops
+  struct TrajectorySegment {
+      ros::Time start_time;         // Quando essa trajetória foi calculada
+      double dt;                    // Passo de tempo do MPC (ex: 0.05s)
+      std::vector<Eigen::VectorXd> states; // Trajetória predita (já em WORLD frame)
+  };
+  
+  TrajectorySegment active_trajectory_;
+  std::mutex traj_mutex_; // Para proteger a leitura/escrita
 
   // TF2 Listener -- Land mark
   tf2_ros::Buffer tf_buffer_;
@@ -258,8 +271,8 @@ private:
       }
   }
 
-  // 3. Main Control Loop
-  void controlLoop(const ros::TimerEvent& event)
+  // MPC Loop
+  void mpcLoop(const ros::TimerEvent& event)
   {
     if (!mpc_controller_ || !has_state_ || !landing_active_) return;
 
@@ -276,7 +289,7 @@ private:
     // Convert Raw Translation
     Eigen::Vector3d t_raw(tf_msg.transform.translation.x,
                           tf_msg.transform.translation.y,
-                          tf_msg.transform.translation.z + 0.30);
+                          tf_msg.transform.translation.z + 0.15);
 
     // Convert Raw Orientation -> Extract Yaw
     tf2::Quaternion q_raw_tf;
@@ -435,81 +448,53 @@ private:
     // u_k = u_{k-1} + delta_u
     u_last_ += u_opt;
 
-    // Visualize (Optional: Send x_ref and prediction_horizon directly, 
-    // but remember to visualize in "land_mark" frame, not "world")
+    std::vector<Eigen::VectorXd> horizon_world;
+    horizon_world.reserve(prediction_horizon.size());
+
+    // Precisamos converter a predição (que está no frame TAG) para WORLD
+    // para que o publisher só precise interpolar números, sem fazer contas de TF.
+    for (const auto& x_k_tag : prediction_horizon) {
+        // x_k_tag é o vetor de erro ou estado relativo. 
+        // Reconstrua o estado absoluto em World Frame aqui.
+        
+        // 1. Posição Alvo (Tag -> World)
+        // Nota: x_ref.head<3>() é a posição da ref no frame da tag (ex: 0,0,1.2)
+        Eigen::Vector3d p_target_tag = x_ref.head<3>() + x_k_tag.head<3>();
+        Eigen::Vector3d p_target_world = T_world_tag * p_target_tag;
+
+        // 2. Orientação Alvo (Tag -> World)
+        Eigen::Vector3d phi_next = x_k_tag.segment<3>(3);
+        Eigen::Vector4d dq_next = rodriguesToQuat<double>(phi_next);
+        Eigen::Vector4d q_target_tag_vec = quatMultiply<double>(q_ref_vec, dq_next);
+        Eigen::Quaterniond q_target_tag(q_target_tag_vec(0), q_target_tag_vec(1), 
+                                        q_target_tag_vec(2), q_target_tag_vec(3));
+        Eigen::Quaterniond q_target_world = q_tag * q_target_tag;
+
+        // 3. Velocidade Alvo (Body -> World)
+        // Lembre-se: MPC gera vel no Body Frame
+        Eigen::Vector3d v_target_body = x_ref.segment<3>(7) + x_k_tag.segment<3>(6);
+        Eigen::Vector3d v_target_world = q_target_world * v_target_body; // Gira para world
+        
+        // 4. Salva num vetor de 13 posições (P, Q, V, W) ou estrutura customizada
+        // Vamos usar um vector genérico de tamanho 10: [Px Py Pz Qw Qx Qy Qz Vx Vy Vz]
+        Eigen::VectorXd state_world(10);
+        state_world << p_target_world, 
+                       q_target_world.w(), q_target_world.x(), q_target_world.y(), q_target_world.z(),
+                       v_target_world;
+        
+        horizon_world.push_back(state_world);
+    }
+
+    // SALVA NA VARIÁVEL COMPARTILHADA
+    {
+        std::lock_guard<std::mutex> lock(traj_mutex_);
+        active_trajectory_.start_time = ros::Time::now();
+        active_trajectory_.dt = 1.0 / control_rate_; // Ex: 0.05
+        active_trajectory_.states = horizon_world;
+    }
+
+    // Visualize no RViz (Opcional, pode manter aqui)
     publishMPCTrajectory(mpc_path_pub_, mpc_poses_pub_, prediction_horizon, x_ref, "land_mark");
-
-    // --- 5. Convert Output (Tag -> World) ---
-    // The MPC output is x_{k+1}. We need to transform this back to World for the drone.
-
-    // A. Target Position (Tag Frame)
-    // x_ref is [0,0,1.2]. horizon[0] is the error dx.
-    // target = ref + error
-    Eigen::Vector3d p_target_tag = x_ref.head<3>() + prediction_horizon[lookahead_steps_].head<3>();
-
-    // Transform to World: p_world = T * p_tag
-    Eigen::Vector3d p_target_world = T_world_tag * p_target_tag;
-
-    // B. Target Orientation (Tag Frame)
-    // Calculate target quaternion in Tag Frame
-    Eigen::Vector3d phi_next = prediction_horizon[lookahead_steps_].segment<3>(3);
-    Eigen::Vector4d dq_next = rodriguesToQuat<double>(phi_next);
-    Eigen::Vector4d q_target_tag_vec = quatMultiply<double>(q_ref_vec, dq_next);
-    Eigen::Quaterniond q_target_tag(q_target_tag_vec(0), q_target_tag_vec(1), 
-                                    q_target_tag_vec(2), q_target_tag_vec(3));
-    
-    // Transform to World: q_world = q_tag_world * q_tag
-    // q_tag is World->Tag. We use it to rotate the local target back to world.
-    Eigen::Quaterniond q_target_world = q_tag * q_target_tag;
-    
-    // C. Target Velocity (Body Frame)
-    // The controller output v is in Body Frame. 
-    // We only need to rotate it to World Frame for the message.
-    Eigen::Vector3d v_target_body = x_ref.segment<3>(7) + prediction_horizon[lookahead_steps_].segment<3>(6);
-    
-    // Rotate Body -> World (using the NEW target orientation)
-    Eigen::Vector3d v_target_world = q_target_world * v_target_body;
-
-    // --- 6. Publish ---
-    aerial_robot_msgs::FlightNav cmd_msg;
-    cmd_msg.header.stamp = ros::Time::now();
-    cmd_msg.header.frame_id = "world";
-
-    // Use POS_MODE first to stop jiggling!
-    cmd_msg.pos_xy_nav_mode = aerial_robot_msgs::FlightNav::POS_VEL_MODE;
-    cmd_msg.pos_z_nav_mode  = aerial_robot_msgs::FlightNav::POS_VEL_MODE;
-    cmd_msg.yaw_nav_mode    = aerial_robot_msgs::FlightNav::POS_MODE;
-    cmd_msg.control_frame   = aerial_robot_msgs::FlightNav::WORLD_FRAME;
-    cmd_msg.target          = aerial_robot_msgs::FlightNav::COG;
-
-    // 2. Velocidades (Feedforward: A velocidade que o MPC calculou para esse ponto)
-    cmd_msg.target_vel_x = v_target_world.x();
-    cmd_msg.target_vel_y = v_target_world.y();
-    cmd_msg.target_vel_z = v_target_world.z();
-
-    // Positions
-    cmd_msg.target_pos_x = p_target_world.x();
-    cmd_msg.target_pos_y = p_target_world.y();
-    cmd_msg.target_pos_z = p_target_world.z();
-
-    // Yaw
-    double r_cmd, p_cmd, y_cmd;
-    tf2::Matrix3x3(tf2::Quaternion(q_target_world.x(), q_target_world.y(), 
-                                   q_target_world.z(), q_target_world.w())).getRPY(r_cmd, p_cmd, y_cmd);
-    cmd_msg.target_yaw = y_cmd;
-
-    cmd_pub_.publish(cmd_msg);
-    // Debug
-    geometry_msgs::PoseStamped debug_msg;
-    debug_msg.header = cmd_msg.header;
-    debug_msg.pose.position.x = p_target_world.x();
-    debug_msg.pose.position.y = p_target_world.y();
-    debug_msg.pose.position.z = p_target_world.z();
-    debug_msg.pose.orientation.w = q_target_world.w();
-    debug_msg.pose.orientation.x = q_target_world.x();
-    debug_msg.pose.orientation.y = q_target_world.y();
-    debug_msg.pose.orientation.z = q_target_world.z();
-    debug_pub_.publish(debug_msg);
   }
 
   // Helper to visualize the 12-dim Error State Trajectory
@@ -575,6 +560,84 @@ private:
   
       path_pub.publish(path_msg);
       pose_pub.publish(poses_msg);
+  }
+
+  void publishLoop(const ros::TimerEvent& event)
+  {
+      if (!landing_active_) return;
+  
+      Eigen::VectorXd target_state; // [Px Py Pz Qw Qx Qy Qz Vx Vy Vz]
+  
+      // 1. Ler trajetória de forma segura
+      {
+          std::lock_guard<std::mutex> lock(traj_mutex_);
+  
+          if (active_trajectory_.states.empty()) return;
+  
+          double time_elapsed = (ros::Time::now() - active_trajectory_.start_time).toSec();
+          double dt = active_trajectory_.dt;
+  
+          // 2. Calcular índices para interpolação
+          // Queremos saber: entre quais passos do MPC estamos agora?
+          int idx = std::floor(time_elapsed / dt);
+  
+          // Proteção de overflow (se o MPC atrasar, seguramos o último ponto)
+          if (idx >= active_trajectory_.states.size() - 1) {
+              target_state = active_trajectory_.states.back();
+          } else {
+              // INTERPOLAÇÃO LINEAR (LERP)
+              double alpha = (time_elapsed - (idx * dt)) / dt; // 0.0 a 1.0
+  
+              const Eigen::VectorXd& s0 = active_trajectory_.states[idx];
+              const Eigen::VectorXd& s1 = active_trajectory_.states[idx + 1];
+  
+              target_state = Eigen::VectorXd(10);
+  
+              // Posição: Lerp simples
+              target_state.head<3>() = (1.0 - alpha) * s0.head<3>() + alpha * s1.head<3>();
+  
+              // Orientação: Slerp (Spherical Linear Interpolation) é o ideal para quatérnios
+              Eigen::Quaterniond q0(s0(3), s0(4), s0(5), s0(6));
+              Eigen::Quaterniond q1(s1(3), s1(4), s1(5), s1(6));
+              Eigen::Quaterniond q_interp = q0.slerp(alpha, q1);
+              target_state(3) = q_interp.w();
+              target_state(4) = q_interp.x();
+              target_state(5) = q_interp.y();
+              target_state(6) = q_interp.z();
+  
+              // Velocidade: Lerp simples
+              target_state.tail<3>() = (1.0 - alpha) * s0.tail<3>() + alpha * s1.tail<3>();
+          }
+      }
+  
+      // 3. Publicar Comando
+      aerial_robot_msgs::FlightNav cmd_msg;
+      cmd_msg.header.stamp = ros::Time::now();
+      cmd_msg.header.frame_id = "world";
+  
+      cmd_msg.pos_xy_nav_mode = aerial_robot_msgs::FlightNav::POS_VEL_MODE;
+      cmd_msg.pos_z_nav_mode  = aerial_robot_msgs::FlightNav::POS_VEL_MODE;
+      cmd_msg.yaw_nav_mode    = aerial_robot_msgs::FlightNav::POS_MODE;
+      cmd_msg.control_frame   = aerial_robot_msgs::FlightNav::WORLD_FRAME;
+      cmd_msg.target          = aerial_robot_msgs::FlightNav::COG;
+  
+      // Preencher com o estado interpolado
+      cmd_msg.target_pos_x = target_state(0);
+      cmd_msg.target_pos_y = target_state(1);
+      cmd_msg.target_pos_z = target_state(2);
+  
+      // Yaw
+      double r, p, y_cmd;
+      tf2::Quaternion q_tf(target_state(4), target_state(5), target_state(6), target_state(3));
+      tf2::Matrix3x3(q_tf).getRPY(r, p, y_cmd);
+      cmd_msg.target_yaw = y_cmd;
+  
+      // Vel Feedforward
+      cmd_msg.target_vel_x = target_state(7);
+      cmd_msg.target_vel_y = target_state(8);
+      cmd_msg.target_vel_z = target_state(9);
+  
+      cmd_pub_.publish(cmd_msg);
   }
 };
 
