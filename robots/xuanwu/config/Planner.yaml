@@ -1,14 +1,33 @@
-# MPC Planner Configuration
-#state_topic: "/xuanwu/eskf/odom"
-state_topic: "/xuanwu/uav/baselink/odom"
+# ==============================================================================
+# MPC Planner Configuration for Xuanwu Quadrotor
+# ==============================================================================
+
+# --- Topics ---
+state_topic: "/xuanwu/uav/baselink/odom"  # Opção 2: Odometria direta do baselink
 cmd_topic:   "/xuanwu/uav/nav"
 
-# Control Loop
-control_rate: 20.0        # Hz
-prediction_horizon: 20    # Steps (N)
-lookahead_steps: 1        # Which step to send to JSK controller
+# --- Loop Rates ---
+control_rate: 20.0        # Hz (Frequência de resolução do MPC)
+trajectory_pub_rate: 100.0 # Hz (Frequência de interpolação e envio para controlador JSK)
 
-# --- Tuning Weights ---
+# --- MPC Horizon ---
+prediction_horizon: 20    # Steps (N)
+
+# --- Physical Properties (Previously Hardcoded) ---
+mass: 1.9                 # [kg]
+gravity: 9.81             # [m/s^2]
+thrust_limit: 14.6232     # [N] Total thrust capability per motor (approx)
+
+# Arm Length Calculation: sqrt(0.12728^2 + 0.12731^2) approx 0.180
+arm_length: 0.180         # [m] Distance from CoG to motor center
+force_torque_ratio: 0.011 # Drag coefficient ratio (c_tau / c_thrust)
+
+# Inertia Matrix Diagonal [Ixx, Iyy, Izz]
+inertia_diag: [0.01400956434, 0.01345117632, 0.01544169758]
+
+# --- Tuning Weights (Initial Values) ---
+# Nota: Estes valores podem ser sobrescritos pelo dynamic_reconfigure durante a execução.
+
 # Position (High penalty = tighter tracking)
 Q_pos_x: 100.0
 Q_pos_y: 100.0
@@ -20,12 +39,15 @@ Q_att_p: 100.0
 Q_att_y: 100.0
 
 # Velocity (Low penalty, allows smooth flow)
-Q_vel_x: 100.0 
-Q_vel_y: 100.0 
-Q_vel_z: 100.0 
+Q_vel_x: 10.0 
+Q_vel_y: 10.0 
+Q_vel_z: 10.0 
 
 # Angular Rate (Damping)
-Q_omega: 100.0
+Q_omega: 1.0
+
+# Integrator State (Integral Action) - Anti-windup via low weight
+integrator_weight_init: 0.00001
 
 # Input Usage (Higher = save battery/smoother; Lower = aggressive)
 R_thrust: 0.001
