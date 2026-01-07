@@ -95,8 +95,9 @@ void LMPC::reset() {
     model_.linearize(x_hover, u_hover, config_.dt);
     
     // 2. Re-Compute Terminal Cost P
-    P_ = solveDARE(model_.getA_aug(), model_.getB_aug(), Q_, R_);
+    //P_ = solveDARE(model_.getA_aug(), model_.getB_aug(), Q_, R_);
     P_.setZero();
+    P_ = Q_;
     
     // 3. Re-Construct QP Matrices
     constructQPMatrices();
@@ -178,15 +179,15 @@ void LMPC::constructQPMatrices() {
     }
 
     // Ground Constraint
-    int row_gnd = (config_.N * nx_) + (config_.N * nu_); 
+    int row_dz = (config_.N * nx_) + (config_.N * nu_); 
     col = 0;
     for(int k=0; k < config_.N; ++k) {
-        int z_global_idx = col + nu_ + 2;
-        A_data_[row_gnd * n_vars_ + z_global_idx] = 1.0;
-        lbA_data_[row_gnd] = -qpOASES::INFTY;
-        ubA_data_[row_gnd] = qpOASES::INFTY; 
+        int dz_global_idx = col + nu_ + 9;
+        A_data_[row_dz * n_vars_ + dz_global_idx] = 1.0;
+        lbA_data_[row_dz] = -5.0;
+        ubA_data_[row_dz] = 5.0;//qpOASES::INFTY; 
         col += nu_ + nx_; 
-        row_gnd++;        
+        row_dz++;        
     }
 
     // --- 4. Gradient g ---

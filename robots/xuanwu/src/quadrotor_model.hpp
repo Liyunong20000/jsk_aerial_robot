@@ -6,9 +6,6 @@
 #include <cmath>
 #include <iostream>
 
-// Note: autodiff includes removed from here to speed up compilation of other nodes!
-
-// Your provided helpers
 #include "quat_helpers.hpp"
 
 // =========================================================================
@@ -62,9 +59,6 @@ protected:
     Eigen::Matrix3d J_inv_;
 
 public:
-    // !!! CRITICAL FIX: Ensure 16-byte alignment for Eigen members !!!
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
     QuadrotorModel();
     virtual ~QuadrotorModel() = default;
 
@@ -165,9 +159,6 @@ private:
     MatrixB_aug B_aug_; 
 
 public:
-    // !!! CRITICAL FIX: Ensure 16-byte alignment for Eigen members !!!
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
     using QuadrotorModel::QuadrotorModel; 
 
     const MatrixA& getA() const;
@@ -175,6 +166,5 @@ public:
     const MatrixB& getB() const;
     const MatrixB_aug& getB_aug() const;
 
-    // Definition moved to CPP to hide autodiff dependencies!
     void linearize(const VectorFull& x_nom, const VectorIn& u_nom, Scalar dt);
 };

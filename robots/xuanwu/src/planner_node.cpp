@@ -109,6 +109,10 @@ private:
   double trajectory_pub_rate_;  // Publishing Frequency (Hz)
   int    prediction_horizon_;
   
+  // Extra parameters here TODO document later
+  double traj_lookahead_time_;
+  double landing_tag_offset_z_;
+
   // Physical Parameters (Loaded via Param)
   double robot_mass_;
   double robot_gravity_;
@@ -161,7 +165,7 @@ private:
   void loadParameters()
   {
     // Topics
-    nh_.param<std::string>("state_topic", state_topic_, "/xuanwu/eskf/odom");
+    nh_.param<std::string>("state_topic", state_topic_, "/xuanwu/uav/baselink/odom");
     nh_.param<std::string>("cmd_topic",   cmd_topic_,   "/xuanwu/uav/nav");
 
     // Loop Rates
@@ -185,6 +189,10 @@ private:
 
     // Default weight for the integrator (can be overwritten by cfg later if added)
     nh_.param<double>("integrator_weight_init", w_integrator_, 0.00001);
+    
+    // TODO document later...
+    nh_.param<double>("traj_lookahead_time", traj_lookahead_time_, 0.5);
+    nh_.param<double>("landing_tag_offset_z", landing_tag_offset_z_, 0.15);
   }
 
   void initQuadrotorModel()
@@ -292,7 +300,11 @@ private:
       // 2. Update Parameters
       prediction_horizon_ = config.horizon; 
       // Removed unused lookahead_steps
-  
+      
+      // TODO document later
+      traj_lookahead_time_ = config.traj_lookahead_time;
+      landing_tag_offset_z_ = config.landing_tag_offset_z;
+
       // 3. Update Weights
       double w_int = config.Q_integrator; 
 
@@ -377,7 +389,8 @@ private:
     processAndShareTrajectory(prediction_horizon, x_ref, T_world_tag);
 
     // 9. Visualization & Profiling
-    publishVisuals(prediction_horizon, x_ref, "land_mark");
+    //publishVisuals(prediction_horizon, x_ref, "land_mark");
+    publishVisuals(prediction_horizon, x_ref, T_world_tag);
     publishProfiling(start_loop_time, start_opt_time, end_opt_time);
   }
 
@@ -392,7 +405,7 @@ private:
           std::lock_guard<std::mutex> lock(traj_mutex_);
           if (active_trajectory_.states.empty()) return;
   
-          double time_elapsed = (ros::Time::now() - active_trajectory_.start_time).toSec();
+          double time_elapsed = traj_lookahead_time_ + (ros::Time::now() - active_trajectory_.start_time).toSec();
           double dt = active_trajectory_.dt;
           
           // Interpolate
@@ -404,8 +417,8 @@ private:
       cmd_msg.header.stamp = ros::Time::now();
       cmd_msg.header.frame_id = "world";
       
-      cmd_msg.pos_xy_nav_mode = aerial_robot_msgs::FlightNav::POS_VEL_MODE;
-      cmd_msg.pos_z_nav_mode  = aerial_robot_msgs::FlightNav::POS_VEL_MODE;
+      cmd_msg.pos_xy_nav_mode = aerial_robot_msgs::FlightNav::POS_MODE; // aerial_robot_msgs::FlightNav::POS_VEL_MODE
+      cmd_msg.pos_z_nav_mode  = aerial_robot_msgs::FlightNav::POS_MODE;
       cmd_msg.yaw_nav_mode    = aerial_robot_msgs::FlightNav::POS_MODE;
       cmd_msg.control_frame   = aerial_robot_msgs::FlightNav::WORLD_FRAME;
       cmd_msg.target          = aerial_robot_msgs::FlightNav::COG;
@@ -433,21 +446,24 @@ private:
 
   bool getSmoothedTagTransform(Eigen::Isometry3d& T_out)
   {
+      bool got_new_measurement = false;
+
       try {
         geometry_msgs::TransformStamped tf_msg;
+        // Tenta pegar a transform mais recente
         tf_msg = tf_buffer_.lookupTransform("world", "land_mark", ros::Time(0));
 
-        // Extract Raw
+        // Extrair dados brutos
         Eigen::Vector3d t_raw(tf_msg.transform.translation.x,
                               tf_msg.transform.translation.y,
-                              tf_msg.transform.translation.z + 0.15); // Offset? Make parameter if needed.
+                              tf_msg.transform.translation.z + + landing_tag_offset_z_);
 
         tf2::Quaternion q_raw_tf;
         tf2::fromMsg(tf_msg.transform.rotation, q_raw_tf);
         double r_raw, p_raw, y_raw;
         tf2::Matrix3x3(q_raw_tf).getRPY(r_raw, p_raw, y_raw);
 
-        // Apply LPF
+        // --- Lógica do LPF (Filtro) ---
         if (!filter_initialized_) {
             t_tag_smooth_   = t_raw;
             yaw_tag_smooth_ = y_raw;
@@ -455,26 +471,43 @@ private:
         } else {
             t_tag_smooth_ = (1.0 - lpf_alpha_) * t_tag_smooth_ + lpf_alpha_ * t_raw;
             
-            // Yaw unwrapping logic
+            // Yaw unwrapping (evitar giros bruscos de 360 graus)
             double diff = y_raw - yaw_tag_smooth_;
             while (diff > M_PI)  diff -= 2.0 * M_PI;
             while (diff < -M_PI) diff += 2.0 * M_PI;
             yaw_tag_smooth_ += lpf_alpha_ * diff;
         }
+        
+        got_new_measurement = true;
 
-        // Construct Transform
-        Eigen::Quaterniond q_tag(Eigen::AngleAxisd(yaw_tag_smooth_, Eigen::Vector3d::UnitZ()));
-        T_out = Eigen::Isometry3d::Identity();
-        T_out.rotate(q_tag);
-        T_out.pretranslate(t_tag_smooth_);
+      } catch (tf2::TransformException &ex) {
+          // Se falhar o lookup, não faz nada aqui dentro.
+          // A lógica de fallback vem abaixo.
+      }
 
-        return true;
+      // --- Decisão: Usar novo, usar velho ou abortar? ---
+      
+      if (got_new_measurement) {
+          // Caso ideal: Tudo certo
+      } 
+      else if (filter_initialized_) {
+          // Caso "Dead Reckoning": Perdemos a tag, mas lembramos onde ela estava
+          ROS_WARN_THROTTLE(2.0, "[Planner] Tag lost! Using last known position.");
+          // Mantemos t_tag_smooth_ e yaw_tag_smooth_ inalterados (último valor bom)
+      } 
+      else {
+          // Caso Crítico: Nunca vimos a tag, impossível pousar
+          ROS_WARN_THROTTLE(1.0, "[Planner] Waiting for INITIAL 'land_mark' transform...");
+          return false;
+      }
 
-    } catch (tf2::TransformException &ex) {
-        ROS_WARN_THROTTLE(1.0, "[Planner] Waiting for 'land_mark' transform...");
-        filter_initialized_ = false; 
-        return false;
-    }
+      // --- Reconstrução da Transformada (Com dados novos OU velhos) ---
+      Eigen::Quaterniond q_tag(Eigen::AngleAxisd(yaw_tag_smooth_, Eigen::Vector3d::UnitZ()));
+      T_out = Eigen::Isometry3d::Identity();
+      T_out.rotate(q_tag);
+      T_out.pretranslate(t_tag_smooth_);
+
+      return true;
   }
 
   void transformStateWorldToTag(const Eigen::Matrix<double, 13, 1>& x_world, 
@@ -502,14 +535,14 @@ private:
   Eigen::VectorXd computeErrorState(const Eigen::Matrix<double, 13, 1>& x_curr, 
                                     const Eigen::Matrix<double, 13, 1>& x_ref)
   {
-      Eigen::Vector3d dr = x_ref.head<3>() - x_curr.head<3>();
+      Eigen::Vector3d dr =  x_curr.head<3>() - x_ref.head<3>();
       
       Eigen::Vector4d q_ref_vec = x_ref.segment<4>(3);
       Eigen::Vector4d q_curr_vec = x_curr.segment<4>(3);
-      Eigen::Vector3d dtheta = quatErrorRodrigues(q_curr_vec, q_ref_vec); // Helper fn
+      Eigen::Vector3d dtheta = quatErrorRodrigues(q_ref_vec, q_curr_vec); // Helper fn
 
-      Eigen::Vector3d dv = x_ref.segment<3>(7) - x_curr.segment<3>(7);
-      Eigen::Vector3d dw = x_ref.tail<3>() - x_curr.tail<3>();
+      Eigen::Vector3d dv =  x_curr.segment<3>(7) - x_ref.segment<3>(7);
+      Eigen::Vector3d dw = x_curr.tail<3>() - x_ref.tail<3>();
 
       Eigen::VectorXd x0_error(16);
       x0_error << dr, dtheta, dv, dw, u_last_; // 16-dim
@@ -601,40 +634,56 @@ private:
   // 6. DEBUG & VISUALIZATION
   // ========================================================================
 
+  // Substitua a função inteira por esta versão:
   void publishVisuals(const std::vector<Eigen::VectorXd>& horizon_errors,
                       const Eigen::Matrix<double, 13, 1>& x_ref,
-                      const std::string& frame_id) 
+                      const Eigen::Isometry3d& T_world_tag) // <--- Mudou aqui
   {
       if (mpc_path_pub_.getNumSubscribers() == 0 && mpc_poses_pub_.getNumSubscribers() == 0) return;
 
       nav_msgs::Path path_msg;
       geometry_msgs::PoseArray poses_msg;
+      
+      // AGORA PUBLICAMOS NO WORLD
       path_msg.header.stamp = ros::Time::now();
-      path_msg.header.frame_id = frame_id;
+      path_msg.header.frame_id = "world"; // <--- Mudou aqui
       poses_msg.header = path_msg.header;
 
-      // Use helper to reconstruct poses from error state (Assuming implementation is available)
-      // For brevity, using local logic similar to existing code
-      Eigen::Vector3d p_ref = x_ref.head<3>();
-      Eigen::Vector4d q_ref = x_ref.segment<4>(3);
+      // Dados de Referência (no frame da Tag)
+      Eigen::Vector3d p_ref_tag = x_ref.head<3>();
+      Eigen::Vector4d q_ref_vec = x_ref.segment<4>(3);
+      
+      // Preparar Rotação World->Tag
+      Eigen::Quaterniond q_world_tag(T_world_tag.rotation());
 
       for (const auto& dx : horizon_errors) {
           geometry_msgs::PoseStamped pose_s;
-          Eigen::Vector3d p_new = p_ref + dx.head<3>();
           
-          pose_s.pose.position.x = p_new.x();
-          pose_s.pose.position.y = p_new.y();
-          pose_s.pose.position.z = p_new.z();
+          // 1. Posição: Tag Frame -> World Frame
+          // P_tag = Ref + Erro
+          Eigen::Vector3d p_target_tag = p_ref_tag + dx.head<3>();
+          // P_world = T_world_tag * P_tag
+          Eigen::Vector3d p_target_world = T_world_tag * p_target_tag;
+          
+          pose_s.pose.position.x = p_target_world.x();
+          pose_s.pose.position.y = p_target_world.y();
+          pose_s.pose.position.z = p_target_world.z(); 
 
+          // 2. Orientação: Tag Frame -> World Frame
           Eigen::Vector3d dphi = dx.segment<3>(3);
           Eigen::Vector4d dq = rodriguesToQuat<double>(dphi);
-          Eigen::Vector4d q_new = quatMultiply<double>(q_ref, dq);
-          normalizeQuat<double>(q_new);
+          // Q_tag = Q_ref * dQ
+          Eigen::Vector4d q_target_tag_vec = quatMultiply<double>(q_ref_vec, dq);
+          Eigen::Quaterniond q_target_tag(q_target_tag_vec(0), q_target_tag_vec(1), 
+                                          q_target_tag_vec(2), q_target_tag_vec(3));
+          
+          // Q_world = Q_world_tag * Q_tag
+          Eigen::Quaterniond q_target_world = q_world_tag * q_target_tag;
 
-          pose_s.pose.orientation.w = q_new(0);
-          pose_s.pose.orientation.x = q_new(1);
-          pose_s.pose.orientation.y = q_new(2);
-          pose_s.pose.orientation.z = q_new(3);
+          pose_s.pose.orientation.w = q_target_world.w();
+          pose_s.pose.orientation.x = q_target_world.x();
+          pose_s.pose.orientation.y = q_target_world.y();
+          pose_s.pose.orientation.z = q_target_world.z();
 
           path_msg.poses.push_back(pose_s);
           poses_msg.poses.push_back(pose_s.pose);
