@@ -1,0 +1,88 @@
+sequenceDiagram
+    participant SYS as System (Xuanwu ROS)
+    participant CB as State Callback
+    participant MPC as MPC Planner
+    participant M_STATE as [MUTEX] State
+    participant M_TRAJ as [MUTEX] Trajectory
+    participant PUB as Publisher
+
+    Note over SYS, PUB: Concurrent Execution (AsyncSpinner Pool)
+
+    %% --- CONTROL LOOP START (20Hz) ---
+    SYS->>MPC: Trigger Timer (20Hz)
+    activate MPC
+    
+    %% 1. Data Acquisition: APRILTAG
+    Note right of MPC: 1. Perception & Filtering
+    
+    MPC->>SYS: Request Tag Position (TF Buffer)
+    SYS-->>MPC: Receive Raw Data (Noisy)
+    
+    %% LPF Logic
+    MPC->>MPC: Apply Low Pass Filter (LPF)<br/>(Signal Stabilization)
+
+    %% 2. Data Acquisition: ODOMETRY READ
+    Note right of MPC: 2. State Acquisition
+    MPC->>M_STATE: LOCK (Read)
+    activate M_STATE
+    M_STATE-->>MPC: Copy: Odometry (Snapshot)
+    deactivate M_STATE
+    MPC->>M_STATE: UNLOCK
+
+    %% 3. Math Prep
+    MPC->>MPC: Transform: World -> Control Frame
+    Note right of MPC: 3. Error Calculation<br/>(Control Frame - Reference)
+
+    %% --- REAL PARALLELISM ---
+    par Concurrent Operations
+        
+        %% LANE 1: MPC Calculation (Bottleneck)
+        rect rgb(255, 230, 230)
+            Note right of MPC: 4. OPTIMIZATION (Bottleneck)
+            MPC->>MPC: Update QP Matrices
+            MPC->>MPC: SOLVE QP (qpOASES)<br/>(Takes ~10-49ms)
+        end
+
+    and
+        %% LANE 2: Sensor Update (Callback Logic)
+        Note over CB: Event: Odometry Arrived
+        SYS->>CB: Trigger Callback
+        activate CB
+        CB->>M_STATE: LOCK (Write)
+        activate M_STATE
+        Note right of M_STATE: Updates Position<br/>(Ready for NEXT loop)
+        M_STATE-->>CB: Success
+        deactivate M_STATE
+        CB->>M_STATE: UNLOCK
+        deactivate CB
+
+    and
+        %% LANE 3: Publisher Logic (High Freq)
+        SYS->>PUB: Trigger Timer (100Hz)
+        activate PUB
+        PUB->>M_TRAJ: LOCK (Read)
+        activate M_TRAJ
+        Note left of M_TRAJ: Reads PREVIOUS Trajectory<br/>(Still Valid)
+        M_TRAJ-->>PUB: Data
+        deactivate M_TRAJ
+        PUB->>M_TRAJ: UNLOCK
+        
+        %% Upsampling Step
+        PUB->>PUB: Upsample: Smooth Path (20Hz -> 100Hz)
+        
+        PUB->>SYS: Publish FlightNav
+        deactivate PUB
+    end
+
+    %% 4. Finalization
+    Note right of MPC: 5. Post-Processing
+    MPC->>MPC: Transform: Control -> World Frame
+    
+    MPC->>M_TRAJ: LOCK (Write)
+    activate M_TRAJ
+    Note left of M_TRAJ: Trajectory Update<br/>Overwrites Flight Plan
+    M_TRAJ-->>MPC: Success
+    deactivate M_TRAJ
+    MPC->>M_TRAJ: UNLOCK
+    
+    deactivate MPC
