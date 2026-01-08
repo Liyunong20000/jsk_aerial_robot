@@ -715,6 +715,11 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "mpc_planner_node");
   ros::NodeHandle nh("~");
   PlannerNode node(nh);
-  ros::spin();
+  
+  // Use AsyncSpinner com 2 threads (ou mais)
+  ros::AsyncSpinner spinner(3); 
+  spinner.start();
+  
+  ros::waitForShutdown(); // Substitui o ros::spin()
   return 0;
 }
