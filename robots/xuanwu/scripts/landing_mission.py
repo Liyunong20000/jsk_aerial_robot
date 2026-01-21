@@ -17,8 +17,8 @@ class LandingMission:
         
         # Navigation
         # Start point to ensure Tag visibility (adjust as needed)
-        self.search_point = np.array([1.5, 0.0, 1.5]) 
-        self.approach_height = 2.0    # Stay high for the approach
+        self.search_point = np.array([0.0, 0.0, 1.0]) 
+        #self.approach_height = 2.0    # Stay high for the approach
         self.nav_tolerance = 0.20     # 20cm tolerance for alignment
         
         # Frames
@@ -54,7 +54,7 @@ class LandingMission:
         self.current_pos = np.array([
             msg.pose.pose.position.x,
             msg.pose.pose.position.y,
-            msg.pose.pose.position.z - 0.19
+            msg.pose.pose.position.z - 0.12
         ])
 
     def send_pos_cmd(self, target_pos):
@@ -85,7 +85,7 @@ class LandingMission:
             return np.array([
                 trans.transform.translation.x,
                 trans.transform.translation.y,
-                self.approach_height
+                trans.transform.translation.z
             ])
         except Exception:
             return None
