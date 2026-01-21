@@ -161,7 +161,7 @@
 
   <!-- downward camera -->
   <xacro:extra_module name = "aerial_robot_camera_frame" parent = "main_body" visible = "0" >
-    <origin xyz="-0.003 0 -0.1042" rpy="0 0 0"/>
+	  <origin xyz="-0.003 0 -0.1042" rpy="0 ${pi} ${-pi/2}"/>
     <inertial>
       <mass value = "0.00001" />
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -172,7 +172,7 @@
   </xacro:extra_module>
 
   <xacro:extra_module name = "aerial_robot_camera_optical_frame" parent = "aerial_robot_camera_frame" visible = "0" >
-    <origin xyz="0 0 0" rpy="0 ${pi/2} 0"/>
+	  <origin xyz="0 0 0" rpy="0 ${-pi/2} ${pi/2}"/>
     <inertial>
       <mass value = "0.00001" />
       <origin xyz="0 0 0" rpy="0 0 0"/>

@@ -1,0 +1,7 @@
+<launch>
+  <arg name="config_dir" default="$(find xuanwu)/config" />
+
+  <node pkg="xuanwu" type="mpc_planner_node" name="mpc_planner" output="screen">
+    <rosparam file="$(arg config_dir)/Planner.yaml" command="load" />
+  </node>
+</launch>

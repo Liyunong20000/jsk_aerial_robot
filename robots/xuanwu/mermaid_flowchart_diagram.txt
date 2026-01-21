@@ -1,0 +1,46 @@
+flowchart TD
+    %% --- INITIALIZATION PHASE ---
+    subgraph SETUP ["Phase 1: Setup"]
+        direction TB
+        A(((Start))) --> B["Load Parameters<br/>(N, dt, weights)"]
+        B --> C[Reserve Memory]
+        C --> D["Compute Hover Point<br/>(u_eq = mg/4)"]
+        
+        D --> E["Discretize Continuous Dynamics<br/>(RK4 Integration)"]
+        E --> F["Linearize around Hover State<br/>(Autodiff Jacobian)"]
+        
+        F -->|"A_full (13,13)<br/>B_full (13,4)"| G[Project to Error State]
+        G -->|"A_r (12,12)<br/>B_r (12,4)"| H["Augment State<br/>(Adds Integrator Action)"]
+        
+        H --> |"A_aug (16,16)<br/>B_aug (16,4)"| J["Construct QP Matrices<br/>(H, A, Bounds)"]
+        J --> K["Instantiate QP Solver<br/>(Initial Factorization)"]
+    end
+
+    %% --- REAL-TIME LOOP ---
+    subgraph LOOP ["Phase 2: Control Loop (20Hz)"]
+        direction TB
+        K --> L{Timer Trigger?}
+        
+        L --> |Yes| M["Compute Error State (x0)<br/>and Update Bounds"]
+        L --> |No| N{Param Change?}
+        
+        N --> |Yes| D
+        N --> |No| L
+        
+        M --> O["Attempt QP Solution<br/>(Hotstart)"]
+        O --> Q{Success?}
+        
+        Q --> |Yes| P[Extract Optimal Control and Trajectory]
+        P --> R[Update Integrator &<br/>Active Trajectory]
+        R --> L
+        
+        Q --> |No| S["Retry: Cold Start<br/>(Re-factorize)"]
+        S --> |Converged| P
+        S --> |Failed| T[Error / Halt]
+    end
+
+    %% Stylizing for readability
+    style SETUP fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style LOOP fill:#e6f7ff,stroke:#005b96,stroke-width:2px
+    style K fill:#fff3cd,stroke:#e6b800 %% Factorization
+    style O fill:#ffcccc,stroke:#b30000

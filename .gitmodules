@@ -1,0 +1,6 @@
+[submodule "robots/xuanwu/third_party/autodiff"]
+	path = robots/xuanwu/third_party/autodiff
+	url = https://github.com/autodiff/autodiff.git
+[submodule "robots/xuanwu/third_party/qpOASES"]
+	path = robots/xuanwu/third_party/qpOASES
+	url = https://github.com/coin-or/qpOASES.git
