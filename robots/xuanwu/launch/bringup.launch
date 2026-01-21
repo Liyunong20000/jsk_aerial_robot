@@ -95,13 +95,13 @@
     <arg name="spawn_yaw" value="$(arg spawn_yaw)" />
   </include>
 
-  <group ns="$(arg aerial_robot_name)">
-    <include file="$(find apriltag_ros)/launch/continuous_detection.launch">
-      <arg name="camera_name" value="/aerial_robot_camera/usb_cam" />
-      <arg name="image_topic" value="image_raw" />
-    </include>
-    <rosparam command="load" file="$(find xuanwu)/config/apriltag/xuanwu_bricks/tags.yaml" ns="apriltag_ros_continuous_node"/>
-  </group>
+  <!-- <group ns="$(arg aerial_robot_name)"> -->
+  <!--   <include file="$(find apriltag_ros)/launch/continuous_detection.launch"> -->
+  <!--     <arg name="camera_name" value="/aerial_robot_camera/usb_cam" /> -->
+  <!--     <arg name="image_topic" value="image_raw" /> -->
+  <!--   </include> -->
+  <!--   <rosparam command="load" file="$(find xuanwu)/config/apriltag/xuanwu_bricks/tags.yaml" ns="apriltag_ros_continuous_node"/> -->
+  <!-- </group> -->
   
   ###########  ESKF Config  ###########
   <node pkg="xuanwu" type="eskf_node" name="eskf" ns="$(arg robot_ns)" output="screen">
