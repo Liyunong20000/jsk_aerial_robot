@@ -3,7 +3,7 @@
 # ==============================================================================
 
 # --- Topics ---
-state_topic: "/xuanwu/uav/baselink/odom"  # Opção 2: Odometria direta do baselink
+state_topic: "/xuanwu/uav/cog/odom"  # Opção 2: Odometria direta do baselink
 cmd_topic:   "/xuanwu/uav/nav"
 
 # --- Loop Rates ---
@@ -54,4 +54,4 @@ R_thrust: 0.001
 
 # --- Offsets & Compensations ---
 traj_lookahead_time: 0.5  # [s] Avanço temporal na leitura da trajetória para compensar latência
-landing_tag_offset_z: 0.15 # [m] Altura alvo acima da tag (ou ajuste do centro da tag para o chão)
+landing_tag_offset_z: 0.12 # [m] Altura alvo acima da tag (ou ajuste do centro da tag para o chão)
