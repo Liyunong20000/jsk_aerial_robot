@@ -355,12 +355,14 @@ private:
     x_ref(3) = 1.0; // Identity Quaternion
 
     // 4. Termination Check (Touchdown)
-    double pos_error = (x_ref.head<3>() - x_current_local.head<3>()).norm();
-    double vel_error = (x_ref.segment<3>(7) - x_current_local.segment<3>(7)).norm();
+    //double pos_error = (x_ref.head<3>() - x_current_local.head<3>()).norm();
+    double z_error = (x_ref.head<1>(2) - x_current_local.head<1>(2)).norm();
+    //double vel_error = (x_ref.segment<3>(7) - x_current_local.segment<3>(7)).norm();
+    double dz_error = (x_ref.segment<1>(9) - x_current_local.segment<1>(9)).norm();
 
     // Thresholds could also be parameters
-    if (pos_error < 0.05 && vel_error < 0.20) {
-        ROS_WARN(">> TOUCHDOWN DETECTED (Err: %.2fm). HALTING MOTORS. <<", pos_error);
+    if (z_error < 0.02 && dz_error < 0.05) {
+        ROS_WARN(">> TOUCHDOWN DETECTED (z err: %.2f m & dz_err: %.2f m/s). HALTING MOTORS. <<", z_error, dz_error);
         halt_pub_.publish(std_msgs::Empty());
         landing_active_ = false;
         return;
@@ -456,7 +458,7 @@ private:
         // Extrair dados brutos
         Eigen::Vector3d t_raw(tf_msg.transform.translation.x,
                               tf_msg.transform.translation.y,
-                              tf_msg.transform.translation.z + + landing_tag_offset_z_);
+                              tf_msg.transform.translation.z + landing_tag_offset_z_);
 
         tf2::Quaternion q_raw_tf;
         tf2::fromMsg(tf_msg.transform.rotation, q_raw_tf);
