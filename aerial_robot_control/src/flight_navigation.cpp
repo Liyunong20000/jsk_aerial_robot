@@ -74,6 +74,8 @@ void BaseNavigator::initialize(ros::NodeHandle nh, ros::NodeHandle nhp,
   power_info_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("uav_power", 10);
   flight_state_pub_ = nh_.advertise<std_msgs::UInt8>("flight_state", 1);
   path_pub_ = nh_.advertise<nav_msgs::Path>("trajectory", 1);
+  
+  mpc_landing_pub_ = nh_.advertise<std_msgs::Bool>("/mpc_planner/start_landing", 1);
 
   estimate_mode_ = estimator_->getEstimateMode();
   force_landing_start_time_ = ros::Time::now();
@@ -406,6 +408,40 @@ void BaseNavigator::joyStickControl(const sensor_msgs::JoyConstPtr & joy_msg)
       ROS_INFO("Joy Control: Land state");
 
       return;
+    }
+  
+  /* custom landing */
+  if(joy_cmd.buttons[JOY_BUTTON_REAR_RIGHT_1] == 1)
+    {
+      if(getNaviState() != CUSTOM_LAND_STATE && getNaviState() > START_STATE)
+        {
+          ROS_INFO("Switching to CUSTOM_LAND_STATE (MPC Landing)");
+          setNaviState(CUSTOM_LAND_STATE);
+          
+          std_msgs::Bool msg;
+          msg.data = true;
+          mpc_landing_pub_.publish(msg);
+          return;
+        }
+    }
+
+  if(joy_cmd.buttons[JOY_BUTTON_REAR_LEFT_1] == 1)
+    {
+      if(getNaviState() == CUSTOM_LAND_STATE)
+        {
+          ROS_WARN("Aborting CUSTOM_LAND_STATE -> Back to HOVER");
+          
+          // Security: Locks current position before going back to hover mode
+          setTargetXyFromCurrentState(); 
+          setTargetZFromCurrentState();
+          
+          setNaviState(HOVER_STATE);
+
+          std_msgs::Bool msg;
+          msg.data = false;
+          mpc_landing_pub_.publish(msg);
+          return;
+        }
     }
 
   teleop_reset_time_ = teleop_reset_duration_ + ros::Time::now().toSec();
@@ -831,6 +867,11 @@ void BaseNavigator::update()
             force_landing_flag_ = false;
           }
 
+        break;
+      }
+    case CUSTOM_LAND_STATE:
+      {
+        // does nothing
         break;
       }
     default:

@@ -15,6 +15,7 @@
 #include <std_msgs/Int8.h>
 #include <std_msgs/UInt8.h>
 #include <nav_msgs/Path.h>
+#include <std_msgs/Bool.h>
 #include <aerial_robot_control/trajectory/trajectory_reference/polynomial_trajectory.hpp>
 
 namespace aerial_robot_navigation
@@ -41,6 +42,7 @@ namespace aerial_robot_navigation
       ARM_ON_STATE,
       TAKEOFF_STATE,
       LAND_STATE,
+      CUSTOM_LAND_STATE,
       HOVER_STATE,
       STOP_STATE
     };
@@ -237,6 +239,7 @@ namespace aerial_robot_navigation
     ros::Publisher  power_info_pub_;
     ros::Publisher  flight_state_pub_;
     ros::Publisher  path_pub_;
+    ros::Publisher  mpc_landing_pub_;
     ros::Subscriber navi_sub_;
     ros::Subscriber pose_sub_;
     ros::Subscriber simple_move_base_goal_sub_;
