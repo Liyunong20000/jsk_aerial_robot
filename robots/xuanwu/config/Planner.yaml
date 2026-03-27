@@ -54,4 +54,4 @@ R_thrust: 0.001
 
 # --- Offsets & Compensations ---
 traj_lookahead_time: 0.5  # [s] Avanço temporal na leitura da trajetória para compensar latência
-landing_tag_offset_z: 0.12 # [m] Altura alvo acima da tag (ou ajuste do centro da tag para o chão)
+landing_tag_offset_z: 0.155 # [m] Altura alvo acima da tag (ou ajuste do centro da tag para o chão)
