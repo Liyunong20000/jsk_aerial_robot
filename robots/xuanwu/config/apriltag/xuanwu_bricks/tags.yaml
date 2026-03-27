@@ -1,10 +1,13 @@
 standalone_tags:
   [
   {id: 0, size: 0.158, name: land_mark},
-#  {id: 1, size: 0.5, name: drone_board_01},
+  {id: 1, size: 0.15, name: drone_board_01},
   ]
 
 publish_tf: true
+tag_threads: 6
+tag_blur: 0.8
+tag_decimate: 2.0
 # ## Tag bundle definitions
 # ### Remarks
 #

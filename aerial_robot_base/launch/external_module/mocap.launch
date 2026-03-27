@@ -14,6 +14,12 @@
                pose2d: mocap/ground_pose
                child_frame_id: baselink
                parent_frame_id: world
+         '2':
+               pose: mocap/pose/tag
+               pose2d: mocap/ground_pose/tag
+               child_frame_id: baselink
+               parent_frame_id: world
+
       optitrack_config:
          enable_optitrack: true
          multicast_address: 239.255.42.99
