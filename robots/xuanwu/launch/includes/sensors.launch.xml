@@ -3,7 +3,7 @@
 
   <arg name="real_machine" default="false" />
   <arg name="simulation" default="false" />
-  <arg name="robot_ns" default="quadrotor" />
+  <arg name="robot_ns" default="xuanwu" />
 
   <group ns="$(arg robot_ns)">
     <group if="$(arg real_machine)">
@@ -29,7 +29,6 @@
         <!--   <arg name="image_height" value="720" /> -->
         <!--   <arg name="robot_ns" value="$(arg robot_ns)" /> -->
         <!-- </include> -->
-        
       </group>
     </group>
 
