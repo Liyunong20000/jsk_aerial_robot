@@ -12,6 +12,8 @@ catkin_package(
   CATKIN_DEPENDS aerial_robot_control aerial_robot_estimation aerial_robot_model
 )
 
+include_directories(${catkin_INCLUDE_DIRS})
+
 install(DIRECTORY config launch
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   USE_SOURCE_PERMISSIONS
@@ -25,7 +27,7 @@ install(DIRECTORY bin
 # Build xuanwu_joy_gripper_node
 add_executable(xuanwu_joy_gripper_node src/xuanwu_joy_gripper_node.cpp)
 target_link_libraries(xuanwu_joy_gripper_node ${catkin_LIBRARIES})
-add_dependencies(xuanwu_joy_gripper_node spinal_gencpp)
+add_dependencies(xuanwu_joy_gripper_node ${catkin_EXPORTED_TARGETS})
 
 # Install executable
 install(TARGETS xuanwu_joy_gripper_node

@@ -71,7 +71,7 @@ XuanwuJoyGripperNode::XuanwuJoyGripperNode(ros::NodeHandle nh, ros::NodeHandle n
   nhp_.param<int>("gripper_servo_index", gripper_servo_index_, 0);
   nhp_.param<int>("gripper_open_angle", gripper_open_angle_, 1400);
   nhp_.param<int>("gripper_close_angle", gripper_close_angle_, 200);
-  nhp_.param<std::string>("gripper_cmd_topic", gripper_cmd_topic_, "extra_servo_cmd");
+  nhp_.param<std::string>("gripper_cmd_topic", gripper_cmd_topic_, "servo/target_states");
 
   ROS_INFO("Xuanwu Joy Gripper Node initialized");
   ROS_INFO("  Servo index: %d", gripper_servo_index_);
