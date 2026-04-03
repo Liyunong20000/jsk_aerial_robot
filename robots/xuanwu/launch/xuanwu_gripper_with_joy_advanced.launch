@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <!-- Xuanwu Gripper Control with Joystick (Advanced - Parameterized version)
+       This launch file:
+       1. Includes joy_stick.launch from aerial_robot_base to start the joy node
+       2. Starts xuanwu_joy_gripper_node for gripper control
+       3. Allows full parameterization of gripper settings
+  -->
+
+  <!-- Robot namespace argument -->
+  <arg name="robot_name" default="/" />
+
+  <!-- Gripper configuration arguments -->
+  <arg name="gripper_servo_index" default="0" />
+  <arg name="gripper_open_angle" default="1400" />
+  <arg name="gripper_close_angle" default="200" />
+  <arg name="gripper_cmd_topic" default="/$(arg robot_name)/servo/target_states" />
+
+  <!-- Joy device configuration arguments -->
+  <arg name="joy_dev" default="/dev/input/js0" />
+  <arg name="joy_coalesce_interval" default="0.025" />
+
+  <!-- Include the joy_stick.launch from aerial_robot_base -->
+  <include file="$(find aerial_robot_base)/launch/external_module/joy_stick.launch">
+    <arg name="robot_name" value="$(arg robot_name)" />
+  </include>
+
+  <!-- Xuanwu Joy Gripper Node
+       Controls gripper using PS4 joystick L1 and R1 buttons
+       L1 (LB) -> Close gripper
+       R1 (RB) -> Open gripper
+  -->
+  <node name="xuanwu_joy_gripper_node" pkg="xuanwu" type="xuanwu_joy_gripper_node" output="screen">
+    <!-- Servo motor configuration -->
+    <param name="gripper_servo_index" value="$(arg gripper_servo_index)"/>
+    <param name="gripper_open_angle" value="$(arg gripper_open_angle)"/>
+    <param name="gripper_close_angle" value="$(arg gripper_close_angle)"/>
+    <param name="gripper_cmd_topic" value="$(arg gripper_cmd_topic)"/>
+
+    <!-- Remap joy topic to match the namespace from joy_stick.launch -->
+    <remap from="joy" to="$(arg robot_name)/joy"/>
+  </node>
+</launch>
+

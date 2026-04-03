@@ -3,6 +3,9 @@ project(xuanwu)
 
 find_package(catkin REQUIRED COMPONENTS
   mujoco_ros_control
+  roscpp
+  sensor_msgs
+  spinal
   )
 
 catkin_package(
@@ -17,6 +20,16 @@ install(DIRECTORY config launch
 install(DIRECTORY bin
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
   USE_SOURCE_PERMISSIONS
+)
+
+# Build xuanwu_joy_gripper_node
+add_executable(xuanwu_joy_gripper_node src/xuanwu_joy_gripper_node.cpp)
+target_link_libraries(xuanwu_joy_gripper_node ${catkin_LIBRARIES})
+add_dependencies(xuanwu_joy_gripper_node spinal_gencpp)
+
+# Install executable
+install(TARGETS xuanwu_joy_gripper_node
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
 ##mujoco_model_convert(
