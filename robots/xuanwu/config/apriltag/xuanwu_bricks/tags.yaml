@@ -1,9 +1,9 @@
 standalone_tags:
   [
-  {id: 0, size: 0.160, name: picking_far},
-  {id: 1, size: 0.03, name: picking_near},
-  {id: 2, size: 0.160, name: placing_far},
-  {id: 3, size: 0.03, name: placing_near},
+  {id: 0, size: 0.096, name: picking_far},
+  {id: 1, size: 0.018, name: picking_near},
+  {id: 2, size: 0.096, name: placing_far},
+  {id: 3, size: 0.018, name: placing_near},
 #  {id: 11, size: 0.160, name: cube_pick},
 #  {id: 12, size: 0.160, name: cube_put_floor},
 #  {id: 13, size: 0.160, name: cube_pick_desk_1},
