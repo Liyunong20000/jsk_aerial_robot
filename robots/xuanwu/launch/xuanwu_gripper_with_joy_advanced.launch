@@ -8,7 +8,7 @@
   -->
 
   <!-- Robot namespace argument -->
-  <arg name="robot_name" default="/" />
+  <arg name="robot_name" default="/xuanwu" />
 
   <!-- Gripper configuration arguments -->
   <arg name="gripper_servo_index" default="0" />
