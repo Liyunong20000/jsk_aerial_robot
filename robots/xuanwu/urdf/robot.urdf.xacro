@@ -121,7 +121,7 @@
           izz="0.01544169758"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 ${pi}" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
         <mesh filename="package://xuanwu/urdf/mesh/drone_gripper_battery_LiDAR_1300_gripper_180mm.dae" />
       </geometry>
