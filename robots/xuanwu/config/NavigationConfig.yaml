@@ -12,7 +12,7 @@ navigation:
   outdoor_takeoff_height: 1.5
   
   # landing
-  land_descend_vel: -0.15
+  land_descend_vel: -0.30
   
   # teleop operation
   joy_udp: false
