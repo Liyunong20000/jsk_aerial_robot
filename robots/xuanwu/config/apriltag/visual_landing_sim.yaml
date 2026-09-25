@@ -1,0 +1,15 @@
+# Matches the bundled tag36h11 ID 0 texture; real settings remain untouched.
+tag_family: tag36h11
+tag_threads: 2
+tag_decimate: 1.0
+tag_blur: 0.0
+tag_refine_edges: 1
+tag_debug: 0
+max_hamming_dist: 0
+publish_tf: true
+publish_tag_detections_image: true
+remove_duplicates: true
+transport_hint: raw
+standalone_tags:
+  - {id: 0, size: 0.20, name: tag0_detected}
+tag_bundles: []

@@ -1,0 +1,28 @@
+# Simulation only. JSK odometry header is /world (controller normalizes /).
+visual_landing:
+  descend: false  # Boolean launch argument overrides this default.
+  descent_rate: 0.03
+  max_z_ref_lead: 0.05
+  land_trigger_height: 0.30  # Final docking-frame UAV center Z, not world odometry.
+  landing_required_frames: 3
+  docking_frame: ground_camera_optical_frame
+  world_frame: world
+  control_rate: 50.0
+  desired_x: 0.0
+  desired_y: 0.0
+  desired_relative_yaw: 0.0
+  xy_kp: 0.5
+  max_xy_vel: 0.08
+  max_xy_ref_lead: 0.10
+  yaw_kp: 0.8
+  max_yaw_rate: 0.15
+  max_xy_acceleration: 0.25
+  max_yaw_acceleration: 0.4
+  align_enter_distance: 0.03
+  align_exit_distance: 0.05
+  yaw_enter_threshold: 0.05
+  yaw_exit_threshold: 0.08
+  required_frames: 10
+  visual_message_timeout: 0.25
+  odom_timeout: 0.5
+  future_tolerance: 0.1

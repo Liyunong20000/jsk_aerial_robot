@@ -1,0 +1,10 @@
+# Tag 0: tag36h11, black outer-edge size 0.20 m; visual on UAV underside.
+# apriltag_ros: tag +X right, +Y up, +Z outward when viewed face-on.
+# UAV: +X forward, +Y left, +Z up. Tag axes in U are (+X,-Y,-Z): Rx(pi).
+# main_body CoG = [-0.01265296482618006, -0.004934887962213502, -0.013164793393510314] m (JSK excludes dummy root inertia).
+# Tag is XY-centered on that CoG; main_body tag Z = -0.175 m, 6 mm below mesh.
+# U_T_tag = [Rx(pi), (0,0,-d)], d = 0.161835206606490 m.
+# tag_T_U = inverse(U_T_tag) = [Rx(pi), (0,0,-d)], NOT identity.
+drone_tags_matrix:
+  - id: 0
+    matrix: [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, -0.161835206606490, 0, 0, 0, 1]
