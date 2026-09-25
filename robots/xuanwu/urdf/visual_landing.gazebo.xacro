@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="xuanwu">
+  <xacro:include filename="$(find xuanwu)/urdf/robot.gazebo.xacro" />
+  <!-- Visual-only fixed child: Gazebo merges it into main_body, no mass/collision. -->
+  <link name="tag0_truth">
+    <visual><geometry><mesh filename="package://xuanwu/urdf/mesh/visual_landing/tag0.dae" /></geometry></visual>
+  </link>
+  <joint name="tag0_visual_mount" type="fixed">
+    <parent link="main_body" /><child link="tag0_truth" />
+    <origin xyz="-0.012652964826180 -0.004934887962214 -0.175" rpy="3.141592653589793 0 0" />
+  </joint>
+</robot>
