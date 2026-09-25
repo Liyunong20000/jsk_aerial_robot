@@ -8,18 +8,27 @@ find_package(catkin REQUIRED COMPONENTS
   spinal
   )
 
+catkin_python_setup()
+
 catkin_package(
   CATKIN_DEPENDS aerial_robot_control aerial_robot_estimation aerial_robot_model
 )
 
+catkin_install_python(PROGRAMS
+  scripts/event_trigger.py
+  scripts/apriltag_relative_pose.py
+  scripts/visual_landing_controller.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
 include_directories(${catkin_INCLUDE_DIRS})
 
-install(DIRECTORY config launch
+install(DIRECTORY config launch urdf world docs
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   USE_SOURCE_PERMISSIONS
 )
 
-install(DIRECTORY bin
+install(DIRECTORY bin OPTIONAL
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
   USE_SOURCE_PERMISSIONS
 )
@@ -42,3 +51,12 @@ install(TARGETS xuanwu_joy_gripper_node
 #  find_package(rostest REQUIRED)
 #  add_subdirectory(test)
 ##endif()
+
+if(CATKIN_ENABLE_TESTING)
+  set(pytest_result_dir "${CATKIN_TEST_RESULTS_DIR}/${PROJECT_NAME}")
+  file(MAKE_DIRECTORY "${pytest_result_dir}")
+  catkin_run_tests_target(pytest visual_landing pytest-visual_landing.xml
+    COMMAND "\"${PYTHON_EXECUTABLE}\" -m pytest -q -p no:cacheprovider \"${PROJECT_SOURCE_DIR}/tests\" --junitxml=\"${pytest_result_dir}/pytest-visual_landing.xml\""
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+  )
+endif()
