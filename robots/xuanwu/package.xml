@@ -12,6 +12,7 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <build_depend>mujoco_ros_control</build_depend>
+  <build_depend>python3-setuptools</build_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>sensor_msgs</build_depend>
   <build_depend>spinal</build_depend>
@@ -26,6 +27,20 @@
   <run_depend>sensor_msgs</run_depend>
   <run_depend>spinal</run_depend>
 
+  <run_depend>rospy</run_depend>
+  <run_depend>tf</run_depend>
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>nav_msgs</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>apriltag_ros</run_depend>
+  <run_depend>gazebo_msgs</run_depend>
+  <run_depend>gazebo_ros</run_depend>
+  <run_depend>gazebo_plugins</run_depend>
+  <run_depend>python3-numpy</run_depend>
+  <run_depend>xacro</run_depend>
+
   <test_depend>rostest</test_depend>
+  <test_depend>python3-pytest</test_depend>
+  <test_depend>python3-yaml</test_depend>
   
 </package>
