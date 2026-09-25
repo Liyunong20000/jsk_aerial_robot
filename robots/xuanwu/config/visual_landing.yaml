@@ -2,9 +2,9 @@
 # Gazebo explicitly overrides this file with visual_landing_sim.yaml.
 visual_landing:
   descend: false  # Boolean launch argument overrides this default.
-  descent_rate: 0.03
+  descent_rate: 0.015
   max_z_ref_lead: 0.05
-  land_trigger_height: 0.30  # Final docking-frame UAV center Z, not world odometry.
+  land_trigger_height: 0.15  # Final docking-frame UAV center Z, not world odometry.
   landing_required_frames: 3
   control_rate: 50.0
   docking_frame: qilin_docking_frame
@@ -19,8 +19,8 @@ visual_landing:
   max_yaw_rate: 0.15
   max_xy_acceleration: 0.25  # Normal ALIGNING only; never delays a safety stop.
   max_yaw_acceleration: 0.4
-  align_enter_distance: 0.03
-  align_exit_distance: 0.05
+  align_enter_distance: 0.02
+  align_exit_distance: 0.04
   yaw_enter_threshold: 0.05
   yaw_exit_threshold: 0.08
   required_frames: 10
