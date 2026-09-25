@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <launch>
+  <arg name="descend" default="false" />
   ###########  launch config  ###########
   <arg name="rm" default="True" />
   <arg name="sim" default="False" />
@@ -11,7 +12,7 @@
   <arg name="worldtype" default="$(find xuanwu)/world/empty.world" />
   <arg name="launch_gazebo" default="True" />
   <arg name="direct_model" default="False" />
-  <arg name="direct_model_name" />
+  <arg name="direct_model_name" default="" />
   <arg name="spawn_x" default="0.0"/>
   <arg name="spawn_y" default="0.0"/>
   <arg name="spawn_z" default="0.0"/>
@@ -20,6 +21,7 @@
   <arg name="robot_ns" value="xuanwu$(arg robot_id)" />
   <arg name="config_dir" default="$(find xuanwu)/config" />
   <arg name="mujoco" default="False" />
+  <arg name="visual_landing_config_file" default="$(arg config_dir)/visual_landing.yaml" />
 
   ###########  Parameters  ###########
   <group ns="$(arg robot_ns)">
@@ -60,6 +62,17 @@
     <param name="param_verbose" value="false"/>
     <param name="main_rate" value="40"/>
   </node>
+
+  <!-- UAV-local task lifecycle: networking launches only transport messages.
+       Starting these nodes never publishes visual_landing/trigger. -->
+  <node pkg="xuanwu" type="event_trigger.py" name="event_trigger" output="screen" respawn="false">
+    <param name="robot_ns" value="$(arg robot_ns)" />
+  </node>
+  <include file="$(find xuanwu)/launch/visual_landing_controller.launch">
+    <arg name="descend" value="$(arg descend)" />
+    <arg name="robot_ns" value="$(arg robot_ns)" />
+    <arg name="config_file" value="$(arg visual_landing_config_file)" />
+  </include>
 
   ###########  Robot Model  ###########
   <arg name="description_mode" value="urdf" unless="$(arg simulation)" />

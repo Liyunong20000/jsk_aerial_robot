@@ -1,0 +1,11 @@
+<launch>
+  <arg name="descend" default="false" />
+  <arg name="robot_ns" default="xuanwu" />
+  <!-- Explicit configuration prevents using simulated calibration on hardware. -->
+  <arg name="config_file" />
+  <node pkg="xuanwu" type="visual_landing_controller.py" name="visual_landing_controller" output="screen">
+    <rosparam file="$(arg config_file)" command="load" />
+    <param name="descend" type="bool" value="$(arg descend)" />
+    <param name="robot_ns" value="$(arg robot_ns)" />
+  </node>
+</launch>
