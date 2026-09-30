@@ -134,9 +134,11 @@ def test_missing_invalid_and_timestamp_fallback(env):
     detection.pose.header.stamp = rospy.Time(99)
     node._callback(AprilTagDetectionArray(detections=[detection]))
     assert node.publisher.publish.call_args.args[0].header.stamp == rospy.Time(99)
+    count = node.publisher.publish.call_count
     detection.pose.header.stamp = rospy.Time()
     node._callback(AprilTagDetectionArray(detections=[detection]))
-    assert node.publisher.publish.call_args.args[0].header.stamp == rospy.Time(100)
+    assert node.publisher.publish.call_count == count
+    assert node.last_source_stamp == rospy.Time(99)
 
 
 def started(env, **kwargs):
@@ -549,6 +551,8 @@ def test_state_topic_diagnostics_and_configurable_rate(env):
 def test_parameter_loading_private_precedence_and_conservative_defaults(env):
     root = Path(__file__).resolve().parents[1]
     config = yaml.safe_load((root / 'config/visual_landing.yaml').read_text())['visual_landing']
+    # The launch loads this YAML before starting the node; mock that ROS parameter step.
+    env.params.update({'~visual_landing/' + key: value for key, value in config.items()})
     node = controller.VisualLandingController()
     for key in ('control_rate', 'xy_kp', 'max_xy_vel', 'max_xy_ref_lead', 'yaw_kp', 'max_yaw_rate',
                 'required_frames', 'visual_message_timeout', 'descent_rate'):
@@ -587,3 +591,131 @@ def test_invalid_controller_configuration(env, params):
     assert not env.publishers
 
 
+
+
+def test_camera_to_rack_offset_once_and_negative_correction(env):
+    # C and D axes align, camera is at D +0.10 m, UAV is at C x=0.
+    matrix = np.eye(4)
+    matrix[0, 3] = 0.10
+    env.params['/camera_drone_matrix'] = matrix.ravel().tolist()
+    node = estimator.AprilTagRelativePose()
+    frame = AprilTagDetectionArray(detections=[tag(0, x=0, z=0)])
+    frame.header.stamp = rospy.Time(101)
+    node._callback(frame)
+    visual_pose = node.publisher.publish.call_args.args[0]
+    assert visual_pose.pose.position.x == pytest.approx(0.10)
+    controller_node = started(env)
+    controller_node._visual_callback(visual_pose)
+    assert controller_node.dog_velocity_target[0] == pytest.approx(-0.05)
+    assert controller_node.velocity_target[0] == pytest.approx(-0.05)
+
+
+def test_estimator_rejects_replay_without_changing_selection_history(env):
+    node = estimator.AprilTagRelativePose()
+    first = AprilTagDetectionArray(detections=[tag(1, x=0.9)])
+    first.header.stamp = rospy.Time(100)
+    node._callback(first)
+    prior = node.previous_center.copy()
+    duplicate = AprilTagDetectionArray(detections=[tag(0, x=0)])
+    duplicate.header.stamp = first.header.stamp
+    node._callback(duplicate)
+    np.testing.assert_array_equal(node.previous_center, prior)
+    assert node.publisher.publish.call_count == 1
+    both = AprilTagDetectionArray(detections=[tag(0, x=0), tag(1, x=1)])
+    both.header.stamp = rospy.Time(101)
+    node._callback(both)
+    assert node.publisher.publish.call_count == 2
+    assert node.previous_center[0] == pytest.approx(1)
+    node._callback(both)
+    assert node.publisher.publish.call_count == 2
+    empty = AprilTagDetectionArray()
+    empty.header.stamp = rospy.Time(102)
+    node._callback(empty)
+    assert node.publisher.publish.call_count == 2
+
+
+def test_nested_stamp_fallback_and_all_invalid_replay(env):
+    node = estimator.AprilTagRelativePose()
+    observation = AprilTagDetectionArray(detections=[tag(0)])
+    observation.detections[0].pose.header.stamp = rospy.Time(80, 12)
+    node._callback(observation)
+    assert node.publisher.publish.call_args.args[0].header.stamp == rospy.Time(80, 12)
+    node._callback(observation)
+    assert node.publisher.publish.call_count == 1
+    observation.detections[0].pose.header.stamp = rospy.Time()
+    for _ in range(3):
+        node._callback(observation)
+    assert node.publisher.publish.call_count == 1
+    assert node.last_source_stamp == rospy.Time(80, 12)
+
+
+def test_real_calibration_and_ground_reference_equivalence(env):
+    ground = pytest.importorskip('cooperation_landing.apriltag_relative_pose')
+    from pathlib import Path
+    root = Path(ground.__file__).resolve().parents[2]
+    for name in ('CameraDroneMatrix.yaml', 'DroneTagsMatrix.yaml'):
+        real = (root / 'config' / name).read_bytes()
+        deployed = (Path(__file__).resolve().parents[1] / 'config' / name).read_bytes()
+        assert deployed == real
+        env.params.update({'/' + key: value for key, value in yaml.safe_load(real).items()})
+    ground_node = ground.AprilTagRelativePose()
+    uav_node = estimator.AprilTagRelativePose()
+    cases = [
+        [tag(0, x=0.2, y=-0.065)],
+        [tag(1, x=0.2, y=0.065)],
+        [tag(0, x=0.2, y=-0.065), tag(1, x=0.2, y=0.065)],
+        [tag(0, x=0.2), tag(1, x=1.0)],
+        [tag(1, x=0.9)],
+        [tag(0, x=0.2), tag(1, x=1.0)],
+    ]
+    for index, detections in enumerate(cases, 1):
+        frame = AprilTagDetectionArray(detections=detections)
+        frame.header.stamp = rospy.Time(100 + index)
+        ground_node._callback(frame)
+        uav_node._callback(frame)
+        expected = ground_node.publisher.publish.call_args.args[0]
+        actual = uav_node.publisher.publish.call_args.args[0]
+        np.testing.assert_allclose(
+            [actual.pose.position.x, actual.pose.position.y, actual.pose.position.z],
+            [expected.pose.position.x, expected.pose.position.y, expected.pose.position.z])
+        qa = np.array([actual.pose.orientation.x, actual.pose.orientation.y,
+                       actual.pose.orientation.z, actual.pose.orientation.w])
+        qb = np.array([expected.pose.orientation.x, expected.pose.orientation.y,
+                       expected.pose.orientation.z, expected.pose.orientation.w])
+        assert abs(np.dot(qa, qb)) == pytest.approx(1)
+        assert actual.header.stamp == expected.header.stamp
+        assert actual.header.frame_id == expected.header.frame_id
+    fallback = AprilTagDetectionArray(detections=[tag(0, x=0.3)])
+    fallback.detections[0].pose.header.stamp = rospy.Time(150)
+    ground_node._callback(fallback)
+    uav_node._callback(fallback)
+    expected = ground_node.publisher.publish.call_args.args[0]
+    actual = uav_node.publisher.publish.call_args.args[0]
+    assert actual.header.stamp == expected.header.stamp == rospy.Time(150)
+    np.testing.assert_allclose(
+        [actual.pose.position.x, actual.pose.position.y, actual.pose.position.z],
+        [expected.pose.position.x, expected.pose.position.y, expected.pose.position.z])
+    for invalid in (
+            AprilTagDetectionArray(detections=[tag(5)]),
+            AprilTagDetectionArray(detections=[tag(0, x=float('nan'))]),
+            AprilTagDetectionArray()):
+        invalid.header.stamp = rospy.Time(200)
+        ground_node._callback(invalid)
+        uav_node._callback(invalid)
+    assert ground_node.publisher.publish.call_count == uav_node.publisher.publish.call_count == len(cases) + 1
+
+
+def test_expected_camera_frame_rejects_mismatch_without_history(env):
+    env.params['~expected_camera_frame'] = 'usb_cam'
+    node = estimator.AprilTagRelativePose()
+    frame = AprilTagDetectionArray(detections=[tag(0)])
+    frame.header.stamp = rospy.Time(101)
+    frame.header.frame_id = 'wrong_optical_frame'
+    frame.detections[0].pose.header.frame_id = 'wrong_optical_frame'
+    node._callback(frame)
+    assert node.previous_center is None
+    node.publisher.publish.assert_not_called()
+    frame.header.frame_id = 'usb_cam'
+    frame.detections[0].pose.header.frame_id = 'usb_cam'
+    node._callback(frame)
+    assert node.publisher.publish.call_count == 1

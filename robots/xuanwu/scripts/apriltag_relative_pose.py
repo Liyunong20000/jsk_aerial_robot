@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ROS entry point for the ground-side visual measurement estimator."""
+"""ROS entry point for the UAV-local visual measurement estimator."""
 
 from xuanwu.apriltag_relative_pose import main
 

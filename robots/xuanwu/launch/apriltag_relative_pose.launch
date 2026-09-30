@@ -2,6 +2,7 @@
   <arg name="robot_ns" default="xuanwu" />
   <arg name="ground_tag_topic" default="/qilin/tag_detections" />
   <arg name="docking_frame" default="qilin_docking_frame" />
+  <arg name="expected_camera_frame" default="usb_cam" />
   <arg name="camera_matrix_file" />
   <arg name="tag_matrix_file" />
   <node pkg="xuanwu" type="apriltag_relative_pose.py" name="apriltag_relative_pose" output="screen">
@@ -10,6 +11,7 @@
     <param name="robot_ns" value="$(arg robot_ns)" />
     <param name="ground_tag_topic" value="$(arg ground_tag_topic)" />
     <param name="docking_frame" value="$(arg docking_frame)" />
+    <param name="expected_camera_frame" value="$(arg expected_camera_frame)" />
     <param name="max_pair_gap" value="0.06" />
   </node>
 </launch>

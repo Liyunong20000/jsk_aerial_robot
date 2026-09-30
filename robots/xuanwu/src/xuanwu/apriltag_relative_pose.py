@@ -1,4 +1,4 @@
-"""Measurement-only AprilTag estimator: UAV center expressed in the dog frame.
+"""Measurement-only AprilTag estimator: UAV center expressed in the rack-centered docking frame.
 
 The geometry intentionally follows AprilmoveqilinNode.find_drone_center without
 importing/initializing its ground-motion interface or changing the fallback.
@@ -16,14 +16,16 @@ from geometry_msgs.msg import PoseStamped
 def rigid_matrix(values, name):
     matrix = np.asarray(values, dtype=float)
     if matrix.size != 16:
-        raise ValueError(name + ' must contain 16 values')
+        raise ValueError(name + " must contain 16 values")
     matrix = matrix.reshape(4, 4)
     rotation = matrix[:3, :3]
-    if (not np.all(np.isfinite(matrix))
-            or not np.allclose(matrix[3], [0, 0, 0, 1])
-            or not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-5)
-            or not np.isclose(np.linalg.det(rotation), 1.0, atol=1e-5)):
-        raise ValueError(name + ' must be a finite rigid transform')
+    if (
+        not np.all(np.isfinite(matrix))
+        or not np.allclose(matrix[3], [0, 0, 0, 1])
+        or not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-5)
+        or not np.isclose(np.linalg.det(rotation), 1.0, atol=1e-5)
+    ):
+        raise ValueError(name + " must be a finite rigid transform")
     return matrix
 
 
@@ -36,44 +38,68 @@ def valid_stamp(stamp):
 
 class AprilTagRelativePose:
     def __init__(self):
-        self.robot_ns = ('/' + str(rospy.get_param('~robot_ns', 'xuanwu')).strip('/')).rstrip('/')
-        self.frame_id = rospy.get_param('~docking_frame', 'qilin_docking_frame')
-        self.camera_matrix = rigid_matrix(rospy.get_param(
-            '~camera_drone_matrix', rospy.get_param('/camera_drone_matrix', [])),
-            'camera_drone_matrix')
-        entries = rospy.get_param('~drone_tags_matrix', rospy.get_param('/drone_tags_matrix', []))
+        self.robot_ns = (
+            "/" + str(rospy.get_param("~robot_ns", "xuanwu")).strip("/")
+        ).rstrip("/")
+        self.frame_id = rospy.get_param("~docking_frame", "qilin_docking_frame")
+        self.expected_camera_frame = rospy.get_param("~expected_camera_frame", "")
+        self.camera_matrix = rigid_matrix(
+            rospy.get_param(
+                "~camera_drone_matrix", rospy.get_param("/camera_drone_matrix", [])
+            ),
+            "camera_drone_matrix",
+        )
+        entries = rospy.get_param(
+            "~drone_tags_matrix", rospy.get_param("/drone_tags_matrix", [])
+        )
         self.tag_matrices = {}
         for entry in entries:
-            if isinstance(entry, dict) and entry.get('id') in (0, 1):
-                self.tag_matrices[entry['id']] = rigid_matrix(
-                    entry.get('matrix', []), 'drone_tags_matrix')
+            if isinstance(entry, dict) and entry.get("id") in (0, 1):
+                self.tag_matrices[entry["id"]] = rigid_matrix(
+                    entry.get("matrix", []), "drone_tags_matrix"
+                )
         if not self.tag_matrices:
-            raise ValueError('drone_tags_matrix must configure tag 0 or tag 1')
-        self.max_pair_gap = float(rospy.get_param('~max_pair_gap', 0.06))
+            raise ValueError("drone_tags_matrix must configure tag 0 or tag 1")
+        raw_pair_gap: object = rospy.get_param("~max_pair_gap", 0.06)
+        if isinstance(raw_pair_gap, bool) or not isinstance(
+            raw_pair_gap, (int, float, str)
+        ):
+            raise ValueError("max_pair_gap must be numeric")
+        self.max_pair_gap = float(raw_pair_gap)
         if not np.isfinite(self.max_pair_gap) or self.max_pair_gap < 0:
-            raise ValueError('max_pair_gap must be finite and nonnegative')
+            raise ValueError("max_pair_gap must be finite and nonnegative")
         self.previous_center = None  # Camera frame, matching the fallback.
+        self.last_source_stamp = None  # Accepted observation identity, never reset on trigger.
         self._lock = threading.Lock()
-        self.publisher = rospy.Publisher(self.robot_ns + '/visual_landing/info', PoseStamped,
-                                         queue_size=1)
+        self.publisher = rospy.Publisher(
+            self.robot_ns + "/visual_landing/info", PoseStamped, queue_size=1
+        )
         self.subscriber = rospy.Subscriber(
-            rospy.get_param('~ground_tag_topic', '/qilin/tag_detections'),
-            AprilTagDetectionArray, self._callback, queue_size=1)
+            rospy.get_param("~ground_tag_topic", "/qilin/tag_detections"),
+            AprilTagDetectionArray,
+            self._callback,
+            queue_size=1,
+        )
 
     def estimate(self, message):
         estimates = {}
         stamps = {}
         for detection in message.detections:
             for tag_id in (0, 1):
-                if (tag_id not in detection.id or tag_id not in self.tag_matrices
-                        or tag_id in estimates):
+                if (
+                    tag_id not in detection.id
+                    or tag_id not in self.tag_matrices
+                    or tag_id in estimates
+                ):
                     continue
                 pose = detection.pose.pose.pose
                 p, q = pose.position, pose.orientation
                 position = [p.x, p.y, p.z]
                 quaternion = [q.x, q.y, q.z, q.w]
-                if (not np.all(np.isfinite(position + quaternion))
-                        or np.linalg.norm(quaternion) < 1e-12):
+                if (
+                    not np.all(np.isfinite(position + quaternion))
+                    or np.linalg.norm(quaternion) < 1e-12
+                ):
                     continue
                 camera_tag = tft.quaternion_matrix(quaternion)
                 camera_tag[:3, 3] = position
@@ -88,16 +114,25 @@ class AprilTagRelativePose:
             if np.linalg.norm(center[:3, 3] - other[:3, 3]) > self.max_pair_gap:
                 selected = 0
                 if self.previous_center is not None:
-                    selected = min(used, key=lambda i: np.linalg.norm(
-                        estimates[i][:3, 3] - self.previous_center))
-                rospy.logwarn_throttle(2.0, 'Tag center estimates disagree; using tag %d.', selected)
+                    selected = min(
+                        used,
+                        key=lambda i: np.linalg.norm(
+                            estimates[i][:3, 3] - self.previous_center
+                        ),
+                    )
+                rospy.logwarn_throttle(
+                    2.0, "Tag center estimates disagree; using tag %d.", selected
+                )
                 center = estimates[selected].copy()
                 used = [selected]
             else:
                 center[:3, 3] = 0.5 * (center[:3, 3] + other[:3, 3])
                 # Average full UAV orientations on the shortest quaternion arc.
-                q = tft.quaternion_slerp(tft.quaternion_from_matrix(center),
-                                         tft.quaternion_from_matrix(other), 0.5)
+                q = tft.quaternion_slerp(
+                    tft.quaternion_from_matrix(center),
+                    tft.quaternion_from_matrix(other),
+                    0.5,
+                )
                 center[:3, :3] = tft.quaternion_matrix(q)[:3, :3]
         self.previous_center = center[:3, 3].copy()
         # Same calibrated transform and signs as the existing XY implementation.
@@ -109,23 +144,49 @@ class AprilTagRelativePose:
         return docking_uav, stamp
 
     def _callback(self, message):
-        received = rospy.Time.now()
         with self._lock:
+            if self.expected_camera_frame:
+                frames = [message.header.frame_id] + [
+                    detection.pose.header.frame_id for detection in message.detections
+                ]
+                declared = [frame for frame in frames if frame]
+                if not declared or any(frame != self.expected_camera_frame for frame in declared):
+                    rospy.logwarn_throttle(2.0, "Rejecting AprilTag observation in unexpected camera frame.")
+                    return
+            # estimate() preserves the validated Ground fusion algorithm and updates
+            # history. Roll it back when a cached, reordered, or unstamped network
+            # packet is rejected, so only accepted observations affect selection.
+            previous = (None if self.previous_center is None
+                        else self.previous_center.copy())
             result = self.estimate(message)
             if result is None:
                 return
             transform, stamp = result
+            if (stamp is None or not valid_stamp(stamp)
+                    or (self.last_source_stamp is not None
+                        and stamp <= self.last_source_stamp)):
+                self.previous_center = previous
+                if stamp is None or not valid_stamp(stamp):
+                    rospy.logwarn_throttle(2.0, "Rejecting AprilTag observation without a usable source timestamp.")
+                return
+            self.last_source_stamp = stamp
             output = PoseStamped()
-            output.header.stamp = stamp if stamp is not None else received
+            output.header.stamp = stamp
             output.header.frame_id = self.frame_id
-            output.pose.position.x, output.pose.position.y, output.pose.position.z = transform[:3, 3]
+            output.pose.position.x, output.pose.position.y, output.pose.position.z = (
+                transform[:3, 3]
+            )
             q = tft.quaternion_from_matrix(transform)
-            (output.pose.orientation.x, output.pose.orientation.y,
-             output.pose.orientation.z, output.pose.orientation.w) = q
+            (
+                output.pose.orientation.x,
+                output.pose.orientation.y,
+                output.pose.orientation.z,
+                output.pose.orientation.w,
+            ) = q
             self.publisher.publish(output)
 
 
 def main():
-    rospy.init_node('apriltag_relative_pose')
-    node = AprilTagRelativePose()
+    rospy.init_node("apriltag_relative_pose")
+    AprilTagRelativePose()
     rospy.spin()

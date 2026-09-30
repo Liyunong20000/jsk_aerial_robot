@@ -242,3 +242,22 @@ def test_launch_bool_argument_chain():
             target = 'bringup.launch' if filename.startswith('visual_landing_gazebo') else 'visual_landing_controller.launch'
             include = next(e for e in launch.findall('include') if e.get('file').endswith('/'+target))
             assert include.find("arg[@name='descend']").get('value')=='$(arg descend)'
+
+
+def test_estimator_owned_once_by_bringup_and_simulation_uses_sim_calibration():
+    root = Path(__file__).resolve().parents[1]
+    bringup = ET.parse(root / 'launch/bringup.launch').getroot()
+    gazebo = ET.parse(root / 'launch/visual_landing_gazebo.launch').getroot()
+    estimator_includes = [e for e in bringup.findall('include')
+                          if e.get('file', '').endswith('/apriltag_relative_pose.launch')]
+    assert len(estimator_includes) == 1
+    assert not [e for e in gazebo.findall('include')
+                if e.get('file', '').endswith('/apriltag_relative_pose.launch')]
+    sim_args = {e.get('name'): e.get('value')
+                for e in gazebo.find('include').findall('arg')}
+    assert sim_args['visual_landing_camera_matrix_file'].endswith('/CameraDroneMatrix_sim.yaml')
+    assert sim_args['visual_landing_tag_matrix_file'].endswith('/DroneTagsMatrix_sim.yaml')
+    assert sim_args['visual_landing_docking_frame'] == 'ground_camera_optical_frame'
+    assert len(bringup.findall("node[@type='event_trigger.py']")) == 1
+    assert len([e for e in bringup.findall('include')
+                if e.get('file', '').endswith('/visual_landing_controller.launch')]) == 1

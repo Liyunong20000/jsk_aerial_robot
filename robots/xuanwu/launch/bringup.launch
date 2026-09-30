@@ -22,6 +22,11 @@
   <arg name="config_dir" default="$(find xuanwu)/config" />
   <arg name="mujoco" default="False" />
   <arg name="visual_landing_config_file" default="$(arg config_dir)/visual_landing.yaml" />
+  <arg name="visual_landing_camera_matrix_file" default="$(arg config_dir)/CameraDroneMatrix.yaml" />
+  <arg name="visual_landing_tag_matrix_file" default="$(arg config_dir)/DroneTagsMatrix.yaml" />
+  <arg name="visual_landing_docking_frame" default="qilin_docking_frame" />
+  <arg name="visual_landing_camera_frame" default="usb_cam" />
+  <arg name="visual_landing_ground_tag_topic" default="/qilin/tag_detections" />
 
   ###########  Parameters  ###########
   <group ns="$(arg robot_ns)">
@@ -68,6 +73,14 @@
   <node pkg="xuanwu" type="event_trigger.py" name="event_trigger" output="screen" respawn="false">
     <param name="robot_ns" value="$(arg robot_ns)" />
   </node>
+  <include file="$(find xuanwu)/launch/apriltag_relative_pose.launch">
+    <arg name="robot_ns" value="$(arg robot_ns)" />
+    <arg name="ground_tag_topic" value="$(arg visual_landing_ground_tag_topic)" />
+    <arg name="docking_frame" value="$(arg visual_landing_docking_frame)" />
+    <arg name="expected_camera_frame" value="$(arg visual_landing_camera_frame)" />
+    <arg name="camera_matrix_file" value="$(arg visual_landing_camera_matrix_file)" />
+    <arg name="tag_matrix_file" value="$(arg visual_landing_tag_matrix_file)" />
+  </include>
   <include file="$(find xuanwu)/launch/visual_landing_controller.launch">
     <arg name="descend" value="$(arg descend)" />
     <arg name="robot_ns" value="$(arg robot_ns)" />
