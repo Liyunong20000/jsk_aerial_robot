@@ -139,6 +139,8 @@ class VisualLandingController:
                                                 self._visual_callback, queue_size=1)
         self.trigger_subscriber = rospy.Subscriber(self.robot_ns + '/visual_landing/trigger', Empty,
                                                    self._trigger_callback, queue_size=1)
+        self.cancel_subscriber = rospy.Subscriber(self.robot_ns + '/visual_landing/cancel', Empty,
+                                                  self._cancel_callback, queue_size=1)
         self.timer = rospy.Timer(rospy.Duration(1.0 / self.control_rate), self._control)
         rospy.loginfo('Visual landing controller ready; state=IDLE')
 
@@ -305,6 +307,38 @@ class VisualLandingController:
             rospy.loginfo('Visual trigger: references initialized from odometry (%.3f, %.3f, %.3f), yaw %.3f.',
                           *position, yaw)
 
+    def _cancel_callback(self, _message):
+        """End this visual session with one zero-feedforward hold, then yield nav."""
+        with self._lock:
+            if self.land_command_sent:
+                rospy.logwarn('Visual cancel ignored after land handoff; JSK landing continues.')
+                return
+            if not self.active:
+                return
+            self._stop_reference()
+            self._reset_evidence()
+            if self._odom_fresh(time.monotonic()):
+                position, _, yaw, _ = self.odom
+                self.xy_ref = position[:2].copy()
+                self.z_ref = float(position[2])
+                self.yaw_ref = float(yaw)
+            else:
+                rospy.logwarn('Visual cancel: no fresh odometry; freezing existing references. '
+                              'This does not guarantee physical hover.')
+            self.visual = None
+            self.visual_received = None
+            self.trigger_time = None
+            self.tracking_started = False
+            self.previous_time = None
+            # Preserve last_visual_stamp and land_command_sent across cancellation.
+            self._set_state(IDLE)  # The final command must use Z POS_MODE, even from DESCENDING.
+            try:
+                self._publish_nav_once()
+            finally:
+                # No timer publication can race this callback under the controller lock.
+                self.active = False
+            rospy.loginfo('Visual landing cancelled; final hold sent and visual nav relinquished.')
+
     def _control(self, _event=None):
         with self._lock:
             if not self.active:
@@ -351,25 +385,29 @@ class VisualLandingController:
                 # Before the first new post-trigger frame the captured reference holds.
                 self.velocity[:] = 0.0
                 self.yaw_rate = 0.0
-            message = FlightNav()
-            message.header.stamp = rospy.Time.now()
-            message.header.frame_id = self.world_frame
-            message.control_frame = FlightNav.WORLD_FRAME
-            message.target = FlightNav.COG
-            message.pos_xy_nav_mode = FlightNav.POS_VEL_MODE
-            message.target_pos_x, message.target_pos_y = self.xy_ref
-            message.target_vel_x, message.target_vel_y = self.velocity
-            message.target_acc_x = message.target_acc_y = 0.0
-            message.pos_z_nav_mode = (FlightNav.POS_VEL_MODE if self.state == DESCENDING
-                                     else FlightNav.POS_MODE)
-            message.target_pos_z = self.z_ref
-            message.target_vel_z = self.vertical_velocity
-            message.target_pos_diff_z = 0.0
-            message.yaw_nav_mode = FlightNav.POS_VEL_MODE
-            message.target_yaw = self.yaw_ref
-            message.target_omega_z = self.yaw_rate
-            self.nav_publisher.publish(message)
+            self._publish_nav_once()
             self._publish_debug(now)
+
+    def _publish_nav_once(self):
+        """Publish current references/feedforward; caller holds the controller lock."""
+        message = FlightNav()
+        message.header.stamp = rospy.Time.now()
+        message.header.frame_id = self.world_frame
+        message.control_frame = FlightNav.WORLD_FRAME
+        message.target = FlightNav.COG
+        message.pos_xy_nav_mode = FlightNav.POS_VEL_MODE
+        message.target_pos_x, message.target_pos_y = self.xy_ref
+        message.target_vel_x, message.target_vel_y = self.velocity
+        message.target_acc_x = message.target_acc_y = 0.0
+        message.pos_z_nav_mode = (FlightNav.POS_VEL_MODE if self.state == DESCENDING
+                                 else FlightNav.POS_MODE)
+        message.target_pos_z = self.z_ref
+        message.target_vel_z = self.vertical_velocity
+        message.target_pos_diff_z = 0.0
+        message.yaw_nav_mode = FlightNav.POS_VEL_MODE
+        message.target_yaw = self.yaw_ref
+        message.target_omega_z = self.yaw_rate
+        self.nav_publisher.publish(message)
 
     def _publish_debug(self, now):
         """Read-only diagnostics; unavailable values are NaN, never fake zeros."""
