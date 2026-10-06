@@ -95,7 +95,7 @@ def test_z_antiwindup_when_uav_does_not_follow(env):
         assert 0 <= 2-node.z_ref <= node.max_z_ref_lead + 1e-12
         assert node.z_ref <= before
         assert command(node).target_vel_z == pytest.approx((node.z_ref-before)/.02)
-    assert node.z_ref == pytest.approx(1.95)
+    assert node.z_ref == pytest.approx(2 - node.max_z_ref_lead)
     assert node.vertical_velocity == pytest.approx(0)
     assert node.state == c.DESCENDING
 
@@ -125,11 +125,11 @@ def test_alignment_loss_freezes_z_and_requires_full_reconfirmation(env, bad):
 @pytest.mark.parametrize('before_timer', [False, True])
 def test_visual_loss_freezes_all_refs_indefinitely_then_realigns(env, before_timer):
     node = descending(env)
-    frame(env, node, x=.02, yaw=.02, z=.1)
+    frame(env, node, x=.02, yaw=.02, z=1)
     node._control()
     assert node.velocity.any() and node.yaw_rate != 0 and node.vertical_velocity < 0
     frozen = reference(node).copy()
-    duplicate = visual(env, x=.02, z=.1)
+    duplicate = visual(env, x=.02, z=1)
     for gap in (.26, 1, 5, 60):
         advance(env, gap)
         node._odom_callback(odom(env, x=node.xy_ref[0], y=node.xy_ref[1], z=node.z_ref))
@@ -170,6 +170,8 @@ def test_land_requires_consecutive_unique_frames_and_relinquishes_nav(env):
     node = descending(env)
     node._control()
     frame(env, node, z=.29)
+    assert node.state == c.BRAKING and node.landing_count == 0
+    frame(env, node, z=.29)
     assert node.landing_count == 1
     duplicate = visual(env, z=.29)
     for _ in range(20):
@@ -189,6 +191,9 @@ def test_land_requires_consecutive_unique_frames_and_relinquishes_nav(env):
         np.testing.assert_array_equal(reference(node), frozen)
     node.land_publisher.publish.side_effect = assert_stopped
     frame(env, node, z=.30)
+    for _ in range(30):
+        if not node.land_command_sent:
+            frame(env, node, z=.30)
     node.land_publisher.publish.assert_called_once()
     nav_count = node.nav_publisher.publish.call_count
     for _ in range(10):
@@ -207,6 +212,27 @@ def test_world_z_below_threshold_does_not_land(env):
         node._odom_callback(odom(env, z=.1))
         node._visual_callback(visual(env, z=node.land_trigger_height + .1))
     node.land_publisher.publish.assert_not_called()
+
+
+@pytest.mark.parametrize('axis,error,aborted', [
+    ('xy', 0.20, False), ('xy', 0.25, False), ('xy', 0.251, True),
+    ('z', 0.10, False), ('z', 0.15, False), ('z', 0.151, True),
+])
+def test_wider_reference_lead_bounds(env, axis, error, aborted):
+    node = descending(env)
+    frozen = reference(node).copy()
+    advance(env)
+    node._odom_callback(odom(env, x=error if axis == 'xy' else 0,
+                             z=node.z_ref + (error if axis == 'z' else 0)))
+    node._control()
+    assert (node.state == c.ABORTED) == aborted
+    if aborted:
+        np.testing.assert_array_equal(reference(node), frozen)
+        assert not node.velocity.any() and node.vertical_velocity == node.yaw_rate == 0
+    else:
+        assert node.state == c.DESCENDING
+        assert np.linalg.norm(node.xy_ref - node.odom[0][:2]) <= node.max_xy_ref_lead + 1e-12
+        assert node.odom[0][2] - node.z_ref <= node.max_z_ref_lead + 1e-12
 
 
 @pytest.mark.parametrize('fault', ['stale', 'xy_jump', 'z_jump'])

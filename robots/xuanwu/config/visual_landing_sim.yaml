@@ -4,6 +4,10 @@ visual_landing:
   descent_rate: 0.03
   max_z_ref_lead: 0.05
   land_trigger_height: 0.30  # Final docking-frame UAV center Z, not world odometry.
+  landing_max_xy_speed: 0.02  # m/s; actual CoG horizontal speed, strict bound.
+  landing_max_xy_ref_error: 0.02  # m; XY reference minus actual CoG, strict bound.
+  landing_realign_max_xy_vel: 0.02  # m/s; XY correction cap at final height.
+  landing_settle_duration: 0.5  # s; continuous settling plus unique visual evidence.
   landing_required_frames: 3
   docking_frame: ground_camera_optical_frame
   world_frame: world
