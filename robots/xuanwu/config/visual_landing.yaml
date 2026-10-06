@@ -3,7 +3,7 @@
 visual_landing:
   descend: false  # Boolean launch argument overrides this default.
   descent_rate: 0.015
-  max_z_ref_lead: 0.05
+  max_z_ref_lead: 0.15  # m; downward reference lead and descent abort threshold.
   land_trigger_height: 0.15  # Final docking-frame UAV center Z, not world odometry.
   landing_required_frames: 3  # Consecutive UNIQUE visual frames at/below handoff height.
   descent_funnel: true
@@ -19,7 +19,7 @@ visual_landing:
   desired_relative_yaw: 0.0  # Calibrate from FINAL docking-frame quaternion.
   xy_kp: 0.5
   max_xy_vel: 0.08
-  max_xy_ref_lead: 0.10
+  max_xy_ref_lead: 0.25  # m; XY reference radius and tracking-error abort threshold.
   yaw_kp: 0.8
   max_yaw_rate: 0.15
   max_xy_acceleration: 0.25  # Normal ALIGNING only; never delays a safety stop.
