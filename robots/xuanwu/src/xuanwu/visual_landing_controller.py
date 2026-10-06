@@ -72,11 +72,11 @@ class VisualLandingController:
         self.descent_funnel = funnel
         for name, default in (
                 ('control_rate', 50.0), ('xy_kp', 0.5), ('yaw_kp', 0.8),
-                ('max_xy_vel', 0.08), ('max_xy_ref_lead', 0.10),
+                ('max_xy_vel', 0.08), ('max_xy_ref_lead', 0.25),
                 ('max_xy_acceleration', 0.25), ('max_yaw_rate', 0.15),
                 ('max_yaw_acceleration', 0.4), ('odom_timeout', 0.5),
                 ('visual_message_timeout', 0.25), ('descent_rate', 0.03),
-                ('max_z_ref_lead', 0.05), ('land_trigger_height', 0.30),
+                ('max_z_ref_lead', 0.15), ('land_trigger_height', 0.30),
                 ('descent_xy_distance', 0.10), ('landing_xy_distance', 0.04),
                 ('descent_yaw_threshold', 0.10), ('landing_yaw_threshold', 0.05),
                 ('future_tolerance', 0.1), ('align_enter_distance', 0.03),
@@ -407,14 +407,20 @@ class VisualLandingController:
                                               self.max_yaw_acceleration * dt))
                 candidate = self.xy_ref + self.velocity * dt
                 odom_xy = self.odom[0][:2]
+                xy_lead = float(np.linalg.norm(self.xy_ref - odom_xy))
+                z_lead = float(self.odom[0][2] - self.z_ref)
                 z_lead_fault = (self.state == DESCENDING
-                                and self.odom[0][2] - self.z_ref > self.max_z_ref_lead + 1e-9)
-                if np.linalg.norm(self.xy_ref - odom_xy) > self.max_xy_ref_lead + 1e-9 or z_lead_fault:
+                                and z_lead > self.max_z_ref_lead + 1e-9)
+                if xy_lead > self.max_xy_ref_lead + 1e-9 or z_lead_fault:
                     # An odometry jump/external displacement can make a frozen ref
                     # violate the radius already. Do not teleport it to chase odom.
                     self._stop_reference()
                     self._set_state(ABORTED)
-                    rospy.logwarn('Visual landing aborted: odometry moved outside XY/Z reference-lead bounds.')
+                    rospy.logwarn(
+                        'Visual landing aborted: odometry moved outside XY/Z reference-lead bounds. '
+                        'XY error %.3f m (limit %.3f m), Z lead %.3f m (limit %.3f m; '
+                        'checked only during descent). New trigger required.',
+                        xy_lead, self.max_xy_ref_lead, z_lead, self.max_z_ref_lead)
                 else:
                     projected = odom_xy + limit_vector(candidate - odom_xy, self.max_xy_ref_lead)
                     # Feedforward must match the bounded trajectory, including at
