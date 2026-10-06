@@ -64,6 +64,12 @@ class VisualLandingController:
         if not isinstance(descend, bool):
             raise ValueError('descend must be a boolean')
         self.descend = descend
+        funnel = self._param('descent_funnel', False)
+        if isinstance(funnel, str) and funnel.lower() in ('true', 'false'):
+            funnel = funnel.lower() == 'true'
+        if not isinstance(funnel, bool):
+            raise ValueError('descent_funnel must be a boolean')
+        self.descent_funnel = funnel
         for name, default in (
                 ('control_rate', 50.0), ('xy_kp', 0.5), ('yaw_kp', 0.8),
                 ('max_xy_vel', 0.08), ('max_xy_ref_lead', 0.10),
@@ -71,6 +77,8 @@ class VisualLandingController:
                 ('max_yaw_acceleration', 0.4), ('odom_timeout', 0.5),
                 ('visual_message_timeout', 0.25), ('descent_rate', 0.03),
                 ('max_z_ref_lead', 0.05), ('land_trigger_height', 0.30),
+                ('descent_xy_distance', 0.10), ('landing_xy_distance', 0.04),
+                ('descent_yaw_threshold', 0.10), ('landing_yaw_threshold', 0.05),
                 ('future_tolerance', 0.1), ('align_enter_distance', 0.03),
                 ('align_exit_distance', 0.05), ('yaw_enter_threshold', 0.05),
                 ('yaw_exit_threshold', 0.08)):
@@ -86,6 +94,9 @@ class VisualLandingController:
         landing_frames = self._param('landing_required_frames', 3)
         self.landing_required_frames = int(landing_frames)
         if (not np.all(np.isfinite(self.desired_xy)) or not math.isfinite(self.desired_yaw)
+                or self.landing_xy_distance > self.descent_xy_distance
+                or self.landing_yaw_threshold > self.descent_yaw_threshold
+                or self.descent_yaw_threshold > math.pi
                 or self.required_frames < 1 or float(frames) != self.required_frames
                 or self.align_exit_distance <= self.align_enter_distance
                 or self.yaw_exit_threshold <= self.yaw_enter_threshold
@@ -116,6 +127,7 @@ class VisualLandingController:
         self.velocity = np.zeros(2)
         self.yaw_rate = 0.0
         self.vertical_velocity = 0.0
+        self.descent_floor = None
         self.previous_time = None
         self.nav_publisher = rospy.Publisher(self.robot_ns + '/uav/nav', FlightNav, queue_size=1)
         self.land_publisher = rospy.Publisher(self.robot_ns + '/teleop_command/land', Empty, queue_size=1)
@@ -242,6 +254,9 @@ class VisualLandingController:
             self.omega_target = float(np.clip(self.yaw_kp * yaw_error,
                                               -self.max_yaw_rate, self.max_yaw_rate))
             distance, angle = np.linalg.norm(error), abs(yaw_error)
+            if self.descend and self.descent_funnel:
+                self._funnel_frame(position, distance, angle, recovering)
+                return
             if self.state == DESCENDING:
                 if distance > self.align_exit_distance or angle > self.yaw_exit_threshold:
                     self.vertical_velocity = 0.0
@@ -281,6 +296,39 @@ class VisualLandingController:
                 rospy.loginfo('Visual alignment complete: XY error %.4f m, yaw error %.4f rad.',
                               distance, yaw_error)
 
+    def _funnel_frame(self, position, distance, angle, recovering):
+        """Two-stage XY/yaw envelope; unique visual callbacks count evidence."""
+        yaw_threshold = (self.descent_yaw_threshold
+                         if position[2] > self.land_trigger_height else self.landing_yaw_threshold)
+        self.yaw_aligned = angle < yaw_threshold
+        self.tracking_started = True
+        self.alignment_count = 0
+        # Translate the visual handoff plane into a world-Z reference floor.
+        # Keep it fixed between frames so repeated timer ticks cannot integrate
+        # below the last observed remaining height. Assumes upright docking Z.
+        self.descent_floor = (self.odom[0][2]
+                              - max(0.0, position[2] - self.land_trigger_height))
+        if position[2] > self.land_trigger_height:
+            self.landing_count = 0
+            if distance < self.descent_xy_distance and self.yaw_aligned and not recovering:
+                self._set_state(DESCENDING)
+            else:
+                self.vertical_velocity = 0.0
+                self._set_state(ALIGNING)
+            return
+        # At/below the handoff plane, hold Z while XY/yaw keep converging.
+        self.vertical_velocity = 0.0
+        self._set_state(ALIGNING)
+        qualified = (distance < self.landing_xy_distance and self.yaw_aligned)
+        self.landing_count = self.landing_count + 1 if qualified else 0
+        if self.landing_count >= self.landing_required_frames and not recovering:
+            self._stop_reference()
+            self.active = False
+            self.land_command_sent = True
+            self.land_publisher.publish(Empty())
+            rospy.loginfo('Visual funnel handed off to JSK land at Z %.3f m, XY %.3f m.',
+                          position[2], distance)
+
     def _trigger_callback(self, _message):
         with self._lock:
             if self.land_command_sent:
@@ -297,6 +345,7 @@ class VisualLandingController:
             self.visual_received = None
             self.trigger_time = now
             self.tracking_started = False
+            self.descent_floor = None
             position, _, yaw, _ = self.odom
             self.xy_ref = position[:2].copy()
             self.z_ref = float(position[2])
@@ -377,6 +426,8 @@ class VisualLandingController:
                         candidate_z = min(self.z_ref, max(
                             self.z_ref - self.descent_rate * dt,
                             self.odom[0][2] - self.max_z_ref_lead))
+                        if self.descent_funnel and self.descent_floor is not None:
+                            candidate_z = min(self.z_ref, max(candidate_z, self.descent_floor))
                         # Consistent feedforward: zero at the anti-windup boundary.
                         self.vertical_velocity = (candidate_z - self.z_ref) / dt
                         self.z_ref = candidate_z

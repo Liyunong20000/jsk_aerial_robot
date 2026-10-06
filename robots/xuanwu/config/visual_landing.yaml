@@ -5,7 +5,12 @@ visual_landing:
   descent_rate: 0.015
   max_z_ref_lead: 0.05
   land_trigger_height: 0.15  # Final docking-frame UAV center Z, not world odometry.
-  landing_required_frames: 3
+  landing_required_frames: 3  # Consecutive UNIQUE visual frames at/below handoff height.
+  descent_funnel: true
+  descent_xy_distance: 0.10  # XY norm < this permits descent above handoff height.
+  landing_xy_distance: 0.04  # XY norm < this permits final handoff; hold Z meanwhile.
+  descent_yaw_threshold: 0.10  # Absolute wrapped yaw error < this (rad, ~5.7 deg).
+  landing_yaw_threshold: 0.05  # Final yaw error < this for all 3 frames (~2.9 deg).
   control_rate: 50.0
   docking_frame: qilin_docking_frame
   world_frame: world  # Accepts JSK's /world spelling too.
