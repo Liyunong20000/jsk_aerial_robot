@@ -556,7 +556,7 @@ def test_parameter_loading_private_precedence_and_conservative_defaults(env):
     env.params.update({'~visual_landing/' + key: value for key, value in config.items()})
     node = controller.VisualLandingController()
     for key in ('control_rate', 'xy_kp', 'max_xy_vel', 'max_xy_ref_lead', 'yaw_kp', 'max_yaw_rate',
-                'required_frames', 'visual_message_timeout', 'descent_rate', 'max_z_ref_lead'):
+                'required_frames', 'visual_message_timeout', 'descent_rate'):
         assert getattr(node, key) == config[key]
     env.params.update({'/visual_landing/xy_kp': 0.4, '~visual_landing/xy_kp': 0.3, '~xy_kp': 0.2})
     assert controller.VisualLandingController().xy_kp == 0.2

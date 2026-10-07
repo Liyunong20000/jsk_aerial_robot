@@ -19,9 +19,8 @@ from std_msgs.msg import Empty, Float64, UInt8, UInt32
 
 IDLE, ALIGNING, ALIGNED, VISION_LOST, ABORTED = range(5)
 DESCENDING = 5
-BRAKING = 6
 STATE_NAMES = {IDLE: 'IDLE', ALIGNING: 'ALIGNING', ALIGNED: 'ALIGNED',
-               VISION_LOST: 'VISION_LOST', ABORTED: 'ABORTED', DESCENDING: 'DESCENDING', BRAKING: 'BRAKING'}
+               VISION_LOST: 'VISION_LOST', ABORTED: 'ABORTED', DESCENDING: 'DESCENDING'}
 
 
 def wrap(rad):
@@ -48,7 +47,6 @@ def pose_state(pose):
 class VisualLandingController:
     IDLE, ALIGNING, ALIGNED, VISION_LOST, ABORTED = IDLE, ALIGNING, ALIGNED, VISION_LOST, ABORTED
     DESCENDING = DESCENDING
-    BRAKING = BRAKING
 
     @staticmethod
     def _param(name, default):
@@ -81,8 +79,6 @@ class VisualLandingController:
                 ('max_z_ref_lead', 0.15), ('land_trigger_height', 0.30),
                 ('descent_xy_distance', 0.10), ('landing_xy_distance', 0.04),
                 ('descent_yaw_threshold', 0.10), ('landing_yaw_threshold', 0.05),
-                ('landing_max_xy_speed', 0.02), ('landing_max_xy_ref_error', 0.02),
-                ('landing_settle_duration', 0.5), ('landing_realign_max_xy_vel', 0.02),
                 ('future_tolerance', 0.1), ('align_enter_distance', 0.03),
                 ('align_exit_distance', 0.05), ('yaw_enter_threshold', 0.05),
                 ('yaw_exit_threshold', 0.08)):
@@ -112,8 +108,6 @@ class VisualLandingController:
         self.state = IDLE
         self.odom = None
         self.odom_received = None
-        self.odom_velocity = None
-        self.landing_settle_since = None
         self.last_visual_stamp = None  # Never reset by a trigger: cached frames stay cached.
         self.visual = None
         self.visual_received = None
@@ -146,8 +140,7 @@ class VisualLandingController:
             for name in ('relative_x', 'relative_y', 'relative_z', 'relative_yaw',
                          'error_x', 'error_y', 'error_xy_norm', 'yaw_error',
                          'vx_dog', 'vy_dog', 'vx_world', 'vy_world', 'omega_ref',
-                         'x_ref', 'y_ref', 'z_ref', 'yaw_ref', 'visual_measurement_age',
-                         'horizontal_speed', 'xy_reference_error', 'landing_settle_time')
+                         'x_ref', 'y_ref', 'z_ref', 'yaw_ref', 'visual_measurement_age')
         }
         self.counter_publisher = rospy.Publisher(
             self.robot_ns + '/visual_landing/debug/aligned_frame_counter', UInt32, queue_size=1)
@@ -195,65 +188,8 @@ class VisualLandingController:
 
     def _reset_evidence(self):
         self.alignment_count = 0
-        self._reset_landing_evidence()
-        self.xy_aligned = self.yaw_aligned = False
-
-    def _reset_landing_evidence(self):
         self.landing_count = 0
-        self.landing_settle_since = None
-
-    def _landing_motion_settled(self, now):
-        """Use actual local CoG velocity, never the commanded feedforward."""
-        return (self._odom_fresh(now) and self.odom_velocity is not None
-                and np.all(np.isfinite(self.odom_velocity)) and self.xy_ref is not None
-                and np.linalg.norm(self.odom_velocity[:2]) < self.landing_max_xy_speed
-                and np.linalg.norm(self.xy_ref - self.odom[0][:2])
-                < self.landing_max_xy_ref_error)
-
-    def _landing_ready(self, qualified, recovering):
-        """Count unique visual evidence plus uninterrupted local settling time."""
-        now = time.monotonic()
-        if not qualified or not self._landing_motion_settled(now):
-            self._reset_landing_evidence()
-            return False
-        if self.landing_settle_since is None:
-            self.landing_settle_since = now
-        self.landing_count += 1
-        return (not recovering and self.landing_count >= self.landing_required_frames
-                and now - self.landing_settle_since >= self.landing_settle_duration)
-
-    def _brake_final_frame(self, qualified, recovering):
-        """Capture a hold once; only subsequent visual frames can confirm landing."""
-        # Do not hide a hard tracking fault by recapturing a new reference.
-        if np.linalg.norm(self.xy_ref - self.odom[0][:2]) > self.max_xy_ref_lead + 1e-9:
-            self._stop_reference()
-            self._reset_evidence()
-            self._set_state(ABORTED)
-            rospy.logwarn('Visual braking aborted: odometry moved outside XY reference-lead bound.')
-            return False
-        if not qualified:
-            self._reset_evidence()
-            self.vertical_velocity = 0.0
-            self._set_state(ALIGNING)
-            return False
-        if self.state != BRAKING:
-            self._stop_reference()
-            self._reset_landing_evidence()
-            # One capture on entry, never follow odometry drift every timer tick.
-            position, _, yaw, _ = self.odom
-            self.xy_ref = position[:2].copy()
-            self.z_ref = float(position[2])
-            self.yaw_ref = float(yaw)
-            self.previous_time = time.monotonic()
-            self._set_state(BRAKING)
-            self._publish_nav_once()
-            rospy.loginfo('Visual landing braking: hold captured; waiting for motion '
-                          'settling and new visual confirmation.')
-            return False
-        # Visual callbacks compute correction targets before this method. Suppress
-        # them while holding; a disqualified frame restores normal alignment.
-        self._stop_reference()
-        return self._landing_ready(True, recovering)
+        self.xy_aligned = self.yaw_aligned = False
 
     def _check_safety(self, now):
         """Check local faults and reset stale visual evidence before accepting a frame."""
@@ -283,11 +219,6 @@ class VisualLandingController:
                 return
             self.odom = (*value, message.header.stamp)
             self.odom_received = time.monotonic()
-            velocity = message.twist.twist.linear
-            self.odom_velocity = np.array([velocity.x, velocity.y, velocity.z], dtype=float)
-            # Even a brief speed/reference excursion between visual frames breaks dwell.
-            if self.active and not self._landing_motion_settled(self.odom_received):
-                self._reset_landing_evidence()
 
     def _visual_callback(self, message):
         value = pose_state(message.pose)
@@ -323,33 +254,26 @@ class VisualLandingController:
             self.omega_target = float(np.clip(self.yaw_kp * yaw_error,
                                               -self.max_yaw_rate, self.max_yaw_rate))
             distance, angle = np.linalg.norm(error), abs(yaw_error)
-            if self.descend and position[2] <= self.land_trigger_height:
-                self.velocity_target = limit_vector(self.velocity_target,
-                                                    self.landing_realign_max_xy_vel)
-                self.dog_velocity_target = limit_vector(self.dog_velocity_target,
-                                                        self.landing_realign_max_xy_vel)
             if self.descend and self.descent_funnel:
                 self._funnel_frame(position, distance, angle, recovering)
                 return
-            if self.state in (DESCENDING, BRAKING):
-                if self.state == BRAKING or position[2] <= self.land_trigger_height:
-                    qualified = (position[2] <= self.land_trigger_height
-                                 and distance < self.landing_xy_distance
-                                 and angle < self.landing_yaw_threshold)
-                    if self._brake_final_frame(qualified, recovering):
+            if self.state == DESCENDING:
+                if distance > self.align_exit_distance or angle > self.yaw_exit_threshold:
+                    self.vertical_velocity = 0.0
+                    self._reset_evidence()
+                    self._set_state(ALIGNING)
+                else:
+                    self.landing_count = (self.landing_count + 1
+                                          if position[2] <= self.land_trigger_height else 0)
+                    if self.landing_count >= self.landing_required_frames:
+                        # Under the same lock as _control: no later visual nav can
+                        # race the standard landing controller. Latch before send.
                         self._stop_reference()
                         self.active = False
                         self.land_command_sent = True
                         self.land_publisher.publish(Empty())
                         rospy.loginfo('Visual descent handed off to JSK land at relative Z %.3f m.',
                                       position[2])
-                    return
-                if distance > self.align_exit_distance or angle > self.yaw_exit_threshold:
-                    self.vertical_velocity = 0.0
-                    self._reset_evidence()
-                    self._set_state(ALIGNING)
-                else:
-                    self._reset_landing_evidence()
                 return
             self.xy_aligned = (distance < self.align_exit_distance if self.xy_aligned
                                else distance <= self.align_enter_distance)
@@ -385,17 +309,19 @@ class VisualLandingController:
         self.descent_floor = (self.odom[0][2]
                               - max(0.0, position[2] - self.land_trigger_height))
         if position[2] > self.land_trigger_height:
-            self._reset_landing_evidence()
+            self.landing_count = 0
             if distance < self.descent_xy_distance and self.yaw_aligned and not recovering:
                 self._set_state(DESCENDING)
             else:
                 self.vertical_velocity = 0.0
                 self._set_state(ALIGNING)
             return
-        # At/below the handoff plane, reacquire slowly or brake before confirmation.
+        # At/below the handoff plane, hold Z while XY/yaw keep converging.
         self.vertical_velocity = 0.0
+        self._set_state(ALIGNING)
         qualified = (distance < self.landing_xy_distance and self.yaw_aligned)
-        if self._brake_final_frame(qualified, recovering):
+        self.landing_count = self.landing_count + 1 if qualified else 0
+        if self.landing_count >= self.landing_required_frames and not recovering:
             self._stop_reference()
             self.active = False
             self.land_command_sent = True
@@ -472,15 +398,7 @@ class VisualLandingController:
             dt = max(0.0, min(now - self.previous_time, 2.0 / self.control_rate))
             self.previous_time = now
             self._check_safety(now)
-            if not self._landing_motion_settled(now):
-                self._reset_landing_evidence()
             self.vertical_velocity = 0.0
-            if (self.state == BRAKING and self.odom is not None
-                    and np.linalg.norm(self.xy_ref - self.odom[0][:2]) > self.max_xy_ref_lead + 1e-9):
-                self._stop_reference()
-                self._reset_evidence()
-                self._set_state(ABORTED)
-                rospy.logwarn('Visual braking aborted: odometry moved outside XY reference-lead bound.')
             if self.state in (ALIGNING, DESCENDING) and self.visual_received is not None and dt > 0:
                 self.velocity += limit_vector(self.velocity_target - self.velocity,
                                                self.max_xy_acceleration * dt)
@@ -510,8 +428,7 @@ class VisualLandingController:
                     self.velocity = (projected - self.xy_ref) / dt
                     self.xy_ref = projected
                     self.yaw_ref = wrap(self.yaw_ref + self.yaw_rate * dt)
-                    if (self.state == DESCENDING
-                            and self.visual[0][2] > self.land_trigger_height):
+                    if self.state == DESCENDING:
                         candidate_z = min(self.z_ref, max(
                             self.z_ref - self.descent_rate * dt,
                             self.odom[0][2] - self.max_z_ref_lead))
@@ -525,8 +442,6 @@ class VisualLandingController:
                 # Before the first new post-trigger frame the captured reference holds.
                 self.velocity[:] = 0.0
                 self.yaw_rate = 0.0
-            if not self._landing_motion_settled(now):
-                self._reset_landing_evidence()
             self._publish_nav_once()
             self._publish_debug(now)
 
@@ -565,13 +480,7 @@ class VisualLandingController:
                       y_ref=nan if self.xy_ref is None else self.xy_ref[1],
                       z_ref=nan if self.z_ref is None else self.z_ref,
                       yaw_ref=nan if self.yaw_ref is None else self.yaw_ref,
-                      visual_measurement_age=self._visual_age(now),
-                      horizontal_speed=(nan if self.odom_velocity is None else
-                                        np.linalg.norm(self.odom_velocity[:2])),
-                      xy_reference_error=(nan if self.xy_ref is None or self.odom is None else
-                                          np.linalg.norm(self.xy_ref - self.odom[0][:2])),
-                      landing_settle_time=(0.0 if self.landing_settle_since is None else
-                                           max(0.0, now - self.landing_settle_since)))
+                      visual_measurement_age=self._visual_age(now))
         try:
             for name, value in values.items():
                 self.debug_publishers[name].publish(Float64(data=float(value)))

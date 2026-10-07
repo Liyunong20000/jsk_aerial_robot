@@ -5,10 +5,6 @@ visual_landing:
   descent_rate: 0.03
   max_z_ref_lead: 0.15  # m; downward reference lead and descent abort threshold.
   land_trigger_height: 0.15  # Final docking-frame UAV center Z, not world odometry.
-  landing_max_xy_speed: 0.02  # m/s; actual CoG horizontal speed, strict bound.
-  landing_max_xy_ref_error: 0.02  # m; XY reference minus actual CoG, strict bound.
-  landing_realign_max_xy_vel: 0.02  # m/s; XY correction cap at final height.
-  landing_settle_duration: 0.5  # s; continuous settling plus unique visual evidence.
   landing_required_frames: 3  # Consecutive UNIQUE visual frames at/below handoff height.
   descent_funnel: true
   descent_xy_distance: 0.10  # XY norm < this permits descent above handoff height.

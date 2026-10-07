@@ -111,10 +111,10 @@ def test_cancel_returns_other_active_states_to_idle(env, state):
 def test_descending_cancel_stops_descent_without_land_handoff(env):
     node = descending(env)
     node._control()
-    frame(env, node, z=.5)
+    frame(env, node, z=.29)
     node._control()
     assert node.state == c.DESCENDING
-    assert node.vertical_velocity < 0 and node.landing_count == 0
+    assert node.vertical_velocity < 0 and node.landing_count == 1
     old_z = node.z_ref
     advance(env)
     node._odom_callback(odom(env, x=.2, y=-.2, z=old_z + .03, yaw=.3))
@@ -147,9 +147,8 @@ def test_idle_cancel_is_idempotent_and_does_not_create_reference(env):
 
 def test_cancel_after_standard_land_handoff_does_not_interfere(env):
     node = descending(env)
-    for _ in range(30):
-        if not node.land_command_sent:
-            frame(env, node, z=.1)
+    for _ in range(node.landing_required_frames):
+        frame(env, node, z=.1)
     assert node.land_command_sent and not node.active
     assert node.land_publisher.publish.call_count == 1
     nav_count = node.nav_publisher.publish.call_count

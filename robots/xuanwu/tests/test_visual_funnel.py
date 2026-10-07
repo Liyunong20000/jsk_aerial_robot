@@ -63,7 +63,7 @@ def test_three_unique_consecutive_final_frames_and_one_shot_handoff(env):
     for _ in range(20):
         node._visual_callback(duplicate)
         node._control()
-    assert node.landing_count == 0
+    assert node.landing_count == 1
     frame(env, node, x=.04, z=.15)
     assert node.landing_count == 0
     for _ in range(2):
@@ -72,10 +72,6 @@ def test_three_unique_consecutive_final_frames_and_one_shot_handoff(env):
         assert node.active and not node.land_command_sent
         assert node.vertical_velocity == 0
     frame(env, node, x=.039, z=.15)
-    assert node.active  # Frame count alone cannot bypass the settling interval.
-    for _ in range(30):
-        if not node.land_command_sent:
-            frame(env, node, x=.039, z=.15)
     assert not node.active and node.land_command_sent
     node.land_publisher.publish.assert_called_once()
     count = node.nav_publisher.publish.call_count
@@ -98,7 +94,7 @@ def test_yaw_gate_blocks_descent_and_resets_final_evidence(env):
     node._control()
     assert node.state == c.ALIGNING and node.z_ref == 2
     frame(env, node, z=.15)
-    assert node.landing_count == 0
+    assert node.landing_count == 1
     frame(env, node, z=.15, yaw=.081)
     assert node.landing_count == 0
 
@@ -125,7 +121,7 @@ def test_vision_outage_resets_final_count(env):
     advance(env, .3)
     node._odom_callback(odom(env, z=2))
     node._visual_callback(visual(env, z=.15))
-    assert node.landing_count == 0 and not node.land_command_sent
+    assert node.landing_count == 1 and not node.land_command_sent
 
 
 def test_timer_cannot_integrate_below_observed_handoff_plane(env):
@@ -182,12 +178,11 @@ def test_yaw_tightens_at_handoff_height_without_hysteresis_carryover(env):
     node._control()
     assert node.landing_count == 0 and node.vertical_velocity == 0
     frame(env, node, z=.15, yaw=.049)
-    assert node.landing_count == 0
+    assert node.landing_count == 1
     frame(env, node, z=.15, yaw=.051)
     assert node.landing_count == 0
-    for _ in range(30):
-        if not node.land_command_sent:
-            frame(env, node, z=.15, yaw=-.049)
+    for _ in range(3):
+        frame(env, node, z=.15, yaw=-.049)
     node.land_publisher.publish.assert_called_once()
 
 
@@ -206,7 +201,7 @@ def test_yaw_wrap_uses_shortest_relative_error(env):
     env.params['~desired_relative_yaw'] = math.pi - .01
     node = funnel(env)
     frame(env, node, z=.15, yaw=-math.pi + .01)
-    assert node.landing_count == 0
+    assert node.landing_count == 1
 
 
 def test_independent_yaw_configuration(env):
