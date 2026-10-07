@@ -2,7 +2,7 @@
 # Gazebo explicitly overrides this file with visual_landing_sim.yaml.
 visual_landing:
   descend: false  # Boolean launch argument overrides this default.
-  descent_rate: 0.015
+  descent_rate: 0.03
   max_z_ref_lead: 0.15  # m; downward reference lead and descent abort threshold.
   land_trigger_height: 0.15  # Final docking-frame UAV center Z, not world odometry.
   landing_max_xy_speed: 0.02  # m/s; actual CoG horizontal speed, strict bound.
